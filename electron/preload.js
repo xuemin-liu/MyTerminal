@@ -3,8 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('electronAPI', {
   ssh: {
     connect: (channelId, config) => ipcRenderer.invoke('ssh:connect', channelId, config),
-    write: (channelId, data) => ipcRenderer.invoke('ssh:write', channelId, data),
-    resize: (channelId, cols, rows) => ipcRenderer.invoke('ssh:resize', channelId, cols, rows),
+    write: (channelId, data) => ipcRenderer.send('ssh:write', channelId, data),
+    resize: (channelId, cols, rows) => ipcRenderer.send('ssh:resize', channelId, cols, rows),
     disconnect: (channelId) => ipcRenderer.invoke('ssh:disconnect', channelId),
     onData: (callback) => {
       const handler = (_event, channelId, data) => callback(channelId, data)
@@ -24,8 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   local: {
     spawn: (channelId, options) => ipcRenderer.invoke('local:spawn', channelId, options),
-    write: (channelId, data) => ipcRenderer.invoke('local:write', channelId, data),
-    resize: (channelId, cols, rows) => ipcRenderer.invoke('local:resize', channelId, cols, rows),
+    write: (channelId, data) => ipcRenderer.send('local:write', channelId, data),
+    resize: (channelId, cols, rows) => ipcRenderer.send('local:resize', channelId, cols, rows),
     disconnect: (channelId) => ipcRenderer.invoke('local:disconnect', channelId),
   },
   sftp: {

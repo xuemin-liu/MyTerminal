@@ -143,7 +143,10 @@ export default function TerminalTab({ tab, isActive }) {
   // Context menu for copy/paste
   const handleContextMenu = (e) => {
     e.preventDefault()
-    setCtxMenu({ x: e.clientX, y: e.clientY, hasSelection: !!terminalInstanceRef.current?.getSelection()?.length })
+    // Clamp so menu (≈120×70) doesn't overflow the window
+    const x = Math.min(e.clientX, window.innerWidth - 130)
+    const y = Math.min(e.clientY, window.innerHeight - 80)
+    setCtxMenu({ x, y, hasSelection: !!terminalInstanceRef.current?.getSelection()?.length })
   }
   const handleCopy = () => {
     const sel = terminalInstanceRef.current?.getSelection()
@@ -326,17 +329,29 @@ export default function TerminalTab({ tab, isActive }) {
           })
           return
         }
+        // Erase any locally-echoed partial prefix before sending Enter
+        if (lineBuffer.length > 0) term.write('\b \b'.repeat(lineBuffer.length))
         lineBuffer = ''
         broadcastWrite(data)
         return
       }
 
-      if (code < 32 && code !== 9) { lineBuffer = ''; broadcastWrite(data); return }
+      if (code < 32 && code !== 9) {
+        // Erase any chars that were locally echoed as part of a partial prefix
+        if (lineBuffer.length > 0) term.write('\b \b'.repeat(lineBuffer.length))
+        lineBuffer = ''
+        broadcastWrite(data)
+        return
+      }
 
       lineBuffer += data
       if (lineBuffer.startsWith(AI_PREFIX.slice(0, lineBuffer.length)) || lineBuffer.startsWith(AI_PREFIX)) {
         term.write(data); return
       }
+      // Erase chars that were locally echoed as part of the partial prefix
+      // so SSH's echo doesn't double-display them
+      const prevEchoed = lineBuffer.length - data.length
+      if (prevEchoed > 0) term.write('\b \b'.repeat(prevEchoed))
       if (lineBuffer.length === data.length) broadcastWrite(data)
       else broadcastWrite(lineBuffer)
       lineBuffer = ''
@@ -364,7 +379,7 @@ export default function TerminalTab({ tab, isActive }) {
         const clean = line.replace(/\r/g, '').trim()
         if (clean) {
           outputLinesRef.current.push(clean)
-          if (outputLinesRef.current.length > 5000) outputLinesRef.current.shift()
+          if (outputLinesRef.current.length > 5000) outputLinesRef.current.splice(0, 500)
           changed = true
         }
       }
@@ -373,11 +388,18 @@ export default function TerminalTab({ tab, isActive }) {
         if (re) setFilterLines(outputLinesRef.current.filter((l) => re.test(l)))
       }
 
-      // CWD detection
-      const m = plain.match(/(?:^|\r?\n|\r)[^\r\n]*[: ]([~/][^\r\n $#>]*?)\s*[$#>]\s*$/)
-      if (m) {
-        const detected = m[1].trim()
+      // CWD detection — prefer OSC 7 (shell integration), fall back to prompt regex
+      // Enable in shell: printf '\e]7;file://%s%s\a' "$HOSTNAME" "$PWD"  (bash/zsh)
+      const osc7 = data.match(/\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)(?:\x07|\x1b\\)/)
+      if (osc7) {
+        const detected = decodeURIComponent(osc7[1])
         if (detected) { clearTimeout(cwdTimer); cwdTimer = setTimeout(() => setCwd(detected), 300) }
+      } else {
+        const m = plain.match(/(?:^|\r?\n|\r)[^\r\n]*[: ]([~/][^\r\n $#>]*?)\s*[$#>]\s*$/)
+        if (m) {
+          const detected = m[1].trim()
+          if (detected) { clearTimeout(cwdTimer); cwdTimer = setTimeout(() => setCwd(detected), 300) }
+        }
       }
     })
 

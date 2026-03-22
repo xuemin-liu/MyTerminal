@@ -38,6 +38,8 @@ function decryptSession(session) {
 }
 
 let mainWindow
+let anthropicClient = null
+let anthropicCachedKey = null
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -92,8 +94,8 @@ ipcMain.handle('ssh:connect', async (_event, channelId, config) => {
   try { return await sshManager.connect(channelId, config) }
   catch (err) { return { error: err.message } }
 })
-ipcMain.handle('ssh:write', (_event, channelId, data) => sshManager.write(channelId, data))
-ipcMain.handle('ssh:resize', (_event, channelId, cols, rows) => sshManager.resize(channelId, cols, rows))
+ipcMain.on('ssh:write', (_event, channelId, data) => sshManager.write(channelId, data))
+ipcMain.on('ssh:resize', (_event, channelId, cols, rows) => sshManager.resize(channelId, cols, rows))
 ipcMain.handle('ssh:disconnect', (_event, channelId) => sshManager.disconnect(channelId))
 
 // ── Local terminal IPC ─────────────────────────────────────────────────────────
@@ -102,8 +104,8 @@ ipcMain.handle('local:spawn', async (_event, channelId, options) => {
   try { return await localTerminalManager.spawn(channelId, options) }
   catch (err) { return { error: err.message } }
 })
-ipcMain.handle('local:write', (_event, channelId, data) => localTerminalManager.write(channelId, data))
-ipcMain.handle('local:resize', (_event, channelId, cols, rows) => localTerminalManager.resize(channelId, cols, rows))
+ipcMain.on('local:write', (_event, channelId, data) => localTerminalManager.write(channelId, data))
+ipcMain.on('local:resize', (_event, channelId, cols, rows) => localTerminalManager.resize(channelId, cols, rows))
 ipcMain.handle('local:disconnect', (_event, channelId) => localTerminalManager.disconnect(channelId))
 
 // ── SFTP IPC ───────────────────────────────────────────────────────────────────
@@ -247,6 +249,8 @@ ipcMain.on('window:close', () => mainWindow?.close())
 
 ipcMain.handle('ai:setKey', (_event, key) => {
   store.set('settings.anthropicApiKey', encryptField(key))
+  anthropicClient = null
+  anthropicCachedKey = null
   return { success: true }
 })
 
@@ -262,7 +266,11 @@ ipcMain.handle('ai:complete', async (_event, { query, context, os }) => {
   const apiKey = raw ? decryptField(raw) : ''
   if (!apiKey) return { error: 'NO_KEY' }
 
-  const client = new Anthropic({ apiKey })
+  if (apiKey !== anthropicCachedKey) {
+    anthropicClient = new Anthropic({ apiKey })
+    anthropicCachedKey = apiKey
+  }
+  const client = anthropicClient
   const userMessage = context
     ? `Terminal output:\n\`\`\`\n${context.slice(0, 6000)}\n\`\`\`\n\nUser request: ${query}`
     : query
