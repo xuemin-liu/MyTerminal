@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Sparkles, Send, Play, X, Settings, Copy, Terminal } from 'lucide-react'
+import { Sparkles, Send, Play, X, Settings, Copy, Terminal, ScrollText } from 'lucide-react'
 
-export default function AiBar({ onRun, onClose, getSelection, isLocal }) {
+export default function AiBar({ onRun, onClose, getSelection, getRecentOutput, isLocal }) {
   const [query, setQuery] = useState('')
   const [result, setResult] = useState(null)   // { type: 'command'|'text', value: string }
   const [loading, setLoading] = useState(false)
@@ -9,7 +9,8 @@ export default function AiBar({ onRun, onClose, getSelection, isLocal }) {
   const [keyStatus, setKeyStatus] = useState(null)
   const [showKeyInput, setShowKeyInput] = useState(false)
   const [keyInput, setKeyInput] = useState('')
-  const [selection, setSelection] = useState('')
+  const [context, setContext] = useState('')
+  const [contextSource, setContextSource] = useState(null) // 'selection' | 'output'
   const inputRef = useRef(null)
   const commandRef = useRef(null)
 
@@ -18,8 +19,15 @@ export default function AiBar({ onRun, onClose, getSelection, isLocal }) {
     window.electronAPI.ai.getKeyStatus().then(setKeyStatus)
     // Capture any current terminal selection
     const sel = getSelection?.() || ''
-    setSelection(sel)
+    if (sel) { setContext(sel); setContextSource('selection') }
   }, [])
+
+  const captureOutput = () => {
+    const output = getRecentOutput?.() || ''
+    if (output) { setContext(output); setContextSource('output') }
+  }
+
+  const clearContext = () => { setContext(''); setContextSource(null) }
 
   const submit = async (q = query) => {
     if (!q.trim()) return
@@ -31,7 +39,7 @@ export default function AiBar({ onRun, onClose, getSelection, isLocal }) {
       : 'Linux'
     const result = await window.electronAPI.ai.complete({
       query: q.trim(),
-      context: selection || undefined,
+      context: context || undefined,
       os: osHint,
     })
     setLoading(false)
@@ -88,12 +96,16 @@ export default function AiBar({ onRun, onClose, getSelection, isLocal }) {
         </div>
       )}
 
-      {/* Selection context badge */}
-      {selection && (
+      {/* Context badge */}
+      {context && (
         <div className="ai-context-badge">
-          <Terminal size={11} />
-          <span>{selection.length} chars selected as context</span>
-          <button className="icon-btn" style={{ width: 18, height: 18 }} onClick={() => setSelection('')}>
+          {contextSource === 'output' ? <ScrollText size={11} /> : <Terminal size={11} />}
+          <span>
+            {contextSource === 'output'
+              ? `Last ${context.split('\n').length} lines captured as context`
+              : `${context.length} chars selected as context`}
+          </span>
+          <button className="icon-btn" style={{ width: 18, height: 18 }} onClick={clearContext}>
             <X size={10} />
           </button>
         </div>
@@ -105,13 +117,21 @@ export default function AiBar({ onRun, onClose, getSelection, isLocal }) {
           ref={inputRef}
           type="text"
           className="ai-query-input"
-          placeholder={selection
-            ? 'Ask about the selected text — "summarize", "explain this error", ...'
-            : '"kill process nginx", "summarize logs", "what does SIGTERM mean?"'}
+          placeholder={context
+            ? 'Ask about the context — "summarize", "explain this error", "what went wrong?"'
+            : '"kill process nginx", "show disk usage", "what does SIGTERM mean?"'}
           value={query}
           onChange={e => setQuery(e.target.value)}
           disabled={loading}
         />
+        <button
+          type="button"
+          className={`icon-btn ${contextSource === 'output' ? 'active' : ''}`}
+          onClick={captureOutput}
+          title="Capture last 150 lines of terminal output as context"
+        >
+          <ScrollText size={14} />
+        </button>
         <button className="btn-primary ai-send-btn" type="submit" disabled={loading || !query.trim()}>
           {loading ? <span className="ai-spinner" /> : <Send size={14} />}
         </button>

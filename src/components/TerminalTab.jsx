@@ -79,6 +79,9 @@ export default function TerminalTab({ tab, isActive }) {
   // Refs for async-safe access
   const colorizeRef = useRef(true)
   const filterTextRef = useRef('')
+  const showAiRef = useRef(false)
+  const showSearchRef = useRef(false)
+  const showFilterRef = useRef(false)
   const filterInputRef = useRef(null)
   const filterResultsRef = useRef(null)
   const searchInputRef = useRef(null)
@@ -93,6 +96,9 @@ export default function TerminalTab({ tab, isActive }) {
   // Sync refs
   useEffect(() => { colorizeRef.current = colorize }, [colorize])
   useEffect(() => { filterTextRef.current = filterText }, [filterText])
+  useEffect(() => { showAiRef.current = showAi }, [showAi])
+  useEffect(() => { showSearchRef.current = showSearch }, [showSearch])
+  useEffect(() => { showFilterRef.current = showFilter }, [showFilter])
 
   // Font size → update live terminal
   useEffect(() => {
@@ -124,13 +130,16 @@ export default function TerminalTab({ tab, isActive }) {
     if (el) el.scrollTop = el.scrollHeight
   }, [filterLines])
 
-  // Keyboard shortcuts — only active when this tab is visible
+  // Keyboard shortcuts — fallback for when xterm does NOT have focus (e.g. toolbar, search bar)
+  // Primary handling (when xterm IS focused) is done via attachCustomKeyEventHandler below.
   useEffect(() => {
     if (!isActive) return
     const handler = (e) => {
+      // Skip if xterm textarea has focus — attachCustomKeyEventHandler handles it there
+      if (document.activeElement?.classList.contains('xterm-helper-textarea')) return
       if (e.ctrlKey && e.shiftKey && e.key === 'F') { e.preventDefault(); setShowSearch((v) => !v) }
-      if (e.ctrlKey && e.key === 'k') { e.preventDefault(); setShowAi(true) }
-      if (e.ctrlKey && e.key === 'f') { e.preventDefault(); setShowFilter((v) => !v) }
+      if (e.ctrlKey && !e.shiftKey && e.key === 'k') { e.preventDefault(); setShowAi((v) => !v) }
+      if (e.ctrlKey && !e.shiftKey && e.key === 'f') { e.preventDefault(); setShowFilter((v) => !v) }
       if (e.ctrlKey && (e.key === '=' || e.key === '+')) { e.preventDefault(); setFontSize((s) => Math.min(32, s + 1)) }
       if (e.ctrlKey && e.key === '-') { e.preventDefault(); setFontSize((s) => Math.max(8, s - 1)) }
       if (e.ctrlKey && e.key === '0') { e.preventDefault(); setFontSize(14) }
@@ -221,6 +230,25 @@ export default function TerminalTab({ tab, isActive }) {
 
     term.open(termRef.current)
     fitAddon.fit()
+
+    // Handle shortcuts before xterm sends them to the PTY/SSH channel.
+    // Returning false prevents xterm from processing the key further.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true
+      if (e.ctrlKey && !e.shiftKey && !e.altKey) {
+        if (e.key === 'k') { setShowAi((v) => !v); return false }
+        if (e.key === 'f') { setShowFilter((v) => !v); return false }
+        if (e.key === '=' || e.key === '+') { setFontSize((s) => Math.min(32, s + 1)); return false }
+        if (e.key === '-') { setFontSize((s) => Math.max(8, s - 1)); return false }
+        if (e.key === '0') { setFontSize(14); return false }
+      }
+      if (e.ctrlKey && e.shiftKey && !e.altKey && e.key === 'F') { setShowSearch((v) => !v); return false }
+      if (e.key === 'Escape' && (showAiRef.current || showSearchRef.current || showFilterRef.current)) {
+        setShowAi(false); setShowSearch(false); setShowFilter(false)
+        return false
+      }
+      return true
+    })
 
     // Reconnect logic
     const scheduleReconnect = () => {
@@ -518,6 +546,7 @@ export default function TerminalTab({ tab, isActive }) {
           onRun={(cmd) => writeToChannel(cmd)}
           onClose={() => setShowAi(false)}
           getSelection={() => terminalInstanceRef.current?.getSelection() || ''}
+          getRecentOutput={() => outputLinesRef.current.slice(-150).join('\n')}
           isLocal={tab.isLocal}
         />
       )}
