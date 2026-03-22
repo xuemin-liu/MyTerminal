@@ -50,7 +50,10 @@ export default function SftpPanel({ channelId, cwd, width }) {
     setPath(dir)
     pathRef.current = dir
     if (cdTerminal) {
-      window.electronAPI.ssh.write(channelId, `cd ${dir}\r`)
+      // Single-quote the path so spaces and most metacharacters are safe.
+      // Escape any literal single-quotes inside the path (bash: 'it'\''s' trick).
+      const safeDir = dir.replace(/'/g, "'\\''")
+      window.electronAPI.ssh.write(channelId, `cd '${safeDir}'\r`)
     }
   }
 
@@ -186,7 +189,7 @@ export default function SftpPanel({ channelId, cwd, width }) {
       style={width ? { width } : undefined}>
       {/* Toolbar */}
       <div className="sftp-toolbar">
-        <button className="icon-btn" onClick={() => loadDir('/')} title="Home"><Home size={15} /></button>
+        <button className="icon-btn" onClick={() => loadDir(sftpHome || '/')} title="Home"><Home size={15} /></button>
         <button className="icon-btn" onClick={goUp} title="Up" disabled={path === '/'}><ChevronLeft size={15} /></button>
         <span className="sftp-path">{path}</span>
         <button
