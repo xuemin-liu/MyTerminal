@@ -58,6 +58,8 @@ export default function SplitTerminalPane({ channelId, config, onClose }) {
 
     const scheduleReconnect = () => {
       if (!isMounted) return
+      clearInterval(reconnectTimer)
+      reconnectTimer = null
       attempt++
       if (attempt > MAX_RECONNECT) {
         term.write('\r\n\x1b[31m[Max reconnect attempts reached — close pane to dismiss]\x1b[0m\r\n')
