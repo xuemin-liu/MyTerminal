@@ -69,4 +69,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notify: {
     send: (title, body) => ipcRenderer.invoke('notify:send', title, body),
   },
+  platform: process.platform,
 })

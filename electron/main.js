@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Notification } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Notification, safeStorage } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const Store = require('electron-store')
@@ -7,6 +7,35 @@ const sshManager = require('./ssh-manager')
 const localTerminalManager = require('./local-terminal')
 
 const store = new Store({ name: 'sessions' })
+
+// ── Credential encryption (safeStorage / OS keychain) ──────────────────────────
+const SENSITIVE_FIELDS = ['password', 'passphrase', 'jumpPassword']
+
+function encryptField(value) {
+  if (!value || typeof value !== 'string') return value
+  if (!safeStorage.isEncryptionAvailable()) return value
+  try { return Buffer.from(safeStorage.encryptString(value)).toString('base64') }
+  catch { return value }
+}
+
+function decryptField(value) {
+  if (!value || typeof value !== 'string') return value
+  if (!safeStorage.isEncryptionAvailable()) return value
+  try { return safeStorage.decryptString(Buffer.from(value, 'base64')) }
+  catch { return value } // plaintext fallback (migration from old format)
+}
+
+function encryptSession(session) {
+  const enc = { ...session }
+  for (const field of SENSITIVE_FIELDS) if (enc[field]) enc[field] = encryptField(enc[field])
+  return enc
+}
+
+function decryptSession(session) {
+  const dec = { ...session }
+  for (const field of SENSITIVE_FIELDS) if (dec[field]) dec[field] = decryptField(dec[field])
+  return dec
+}
 
 let mainWindow
 
@@ -119,31 +148,38 @@ ipcMain.handle('dialog:saveFile', async (_event, options) => {
 
 // ── Session persistence ────────────────────────────────────────────────────────
 
-ipcMain.handle('sessions:getAll', () => store.get('sessions', []))
+ipcMain.handle('sessions:getAll', () => store.get('sessions', []).map(decryptSession))
 
 ipcMain.handle('sessions:save', (_event, session) => {
   const sessions = store.get('sessions', [])
   const idx = sessions.findIndex((x) => x.id === session.id)
-  if (idx >= 0) sessions[idx] = session
-  else sessions.push(session)
+  const encrypted = encryptSession(session)
+  if (idx >= 0) sessions[idx] = encrypted
+  else sessions.push(encrypted)
   store.set('sessions', sessions)
-  return sessions
+  return sessions.map(decryptSession)
 })
 
 ipcMain.handle('sessions:delete', (_event, id) => {
   const sessions = store.get('sessions', []).filter((x) => x.id !== id)
   store.set('sessions', sessions)
-  return sessions
+  return sessions.map(decryptSession)
 })
 
-ipcMain.handle('sessions:export', async (_event, sessions) => {
+ipcMain.handle('sessions:export', async (_event, _sessions) => {
   const result = await dialog.showSaveDialog(mainWindow, {
     title: 'Export Sessions',
     defaultPath: 'myterminal-sessions.json',
     filters: [{ name: 'JSON', extensions: ['json'] }],
   })
   if (result.canceled) return { canceled: true }
-  fs.writeFileSync(result.filePath, JSON.stringify(sessions, null, 2), 'utf8')
+  // Export metadata only — passwords are machine-specific and cannot be decrypted on another device
+  const exportable = store.get('sessions', []).map((s) => {
+    const clean = decryptSession(s)
+    for (const field of SENSITIVE_FIELDS) delete clean[field]
+    return clean
+  })
+  fs.writeFileSync(result.filePath, JSON.stringify(exportable, null, 2), 'utf8')
   return { success: true }
 })
 
@@ -161,11 +197,11 @@ ipcMain.handle('sessions:import', async () => {
     const existing = store.get('sessions', [])
     const map = new Map(existing.map((s) => [s.id, s]))
     for (const s of imported) {
-      if (s.id && s.host && s.username) map.set(s.id, s)
+      if (s.id && s.host && s.username) map.set(s.id, encryptSession(s))
     }
     const merged = Array.from(map.values())
     store.set('sessions', merged)
-    return merged
+    return merged.map(decryptSession)
   } catch (e) {
     return { error: e.message }
   }
@@ -210,17 +246,20 @@ ipcMain.on('window:close', () => mainWindow?.close())
 // ── AI assistant ───────────────────────────────────────────────────────────────
 
 ipcMain.handle('ai:setKey', (_event, key) => {
-  store.set('settings.anthropicApiKey', key)
+  store.set('settings.anthropicApiKey', encryptField(key))
   return { success: true }
 })
 
 ipcMain.handle('ai:getKeyStatus', () => {
-  const key = store.get('settings.anthropicApiKey', '')
-  return key ? '••••' + key.slice(-4) : ''
+  const raw = store.get('settings.anthropicApiKey', '')
+  if (!raw) return ''
+  const key = decryptField(raw)
+  return '••••' + key.slice(-4)
 })
 
 ipcMain.handle('ai:complete', async (_event, { query, context, os }) => {
-  const apiKey = store.get('settings.anthropicApiKey', '')
+  const raw = store.get('settings.anthropicApiKey', '')
+  const apiKey = raw ? decryptField(raw) : ''
   if (!apiKey) return { error: 'NO_KEY' }
 
   const client = new Anthropic({ apiKey })

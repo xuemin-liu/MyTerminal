@@ -309,7 +309,7 @@ export default function TerminalTab({ tab }) {
           aiPending = true
           term.write('\r\x1b[2K')
           term.write(`\x1b[90m⟳ AI: ${query}\x1b[0m`)
-          const osHint = tab.isLocal && process.platform === 'win32' ? 'Windows PowerShell' : 'Linux'
+          const osHint = tab.isLocal && window.electronAPI.platform === 'win32' ? 'Windows PowerShell' : 'Linux'
           window.electronAPI.ai.complete({ query, os: osHint }).then((result) => {
             aiPending = false
             term.write('\r\x1b[2K')
@@ -491,6 +491,7 @@ export default function TerminalTab({ tab }) {
           onRun={(cmd) => writeToChannel(cmd)}
           onClose={() => setShowAi(false)}
           getSelection={() => terminalInstanceRef.current?.getSelection() || ''}
+          isLocal={tab.isLocal}
         />
       )}
 
@@ -584,7 +585,6 @@ export default function TerminalTab({ tab }) {
               className="split-divider"
               onMouseDown={(e) => {
                 e.preventDefault()
-                const startX = e.clientX
                 const container = e.currentTarget.parentElement
                 const totalW = container.offsetWidth
                 const onMove = (ev) => {
