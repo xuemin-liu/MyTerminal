@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { X, Terminal, Plus, Radio, Monitor } from 'lucide-react'
+import { X, Terminal, Plus, Radio, Monitor, Save } from 'lucide-react'
 import useSessionStore from '../store/useSessionStore'
 import SessionDialog from './SessionDialog'
 
 const TAB_COLORS = ['#58a6ff', '#3fb950', '#d29922', '#ff7b72', '#bc8cff', '#39c5cf', '#f78166', null]
 
 export default function TabBar() {
-  const { tabs, activeTabId, setActiveTab, closeTab, updateTab, broadcastMode, toggleBroadcast, openLocalTab } = useSessionStore()
+  const { tabs, activeTabId, setActiveTab, closeTab, updateTab, addSession, broadcastMode, toggleBroadcast, openLocalTab } = useSessionStore()
   const [quickConnect, setQuickConnect] = useState(false)
   const [tabMenu, setTabMenu] = useState(null) // { x, y, tabId, label, color }
   const [editLabel, setEditLabel] = useState('')
@@ -28,8 +28,15 @@ export default function TabBar() {
 
   const openTabMenu = (e, tab) => {
     e.preventDefault()
-    setTabMenu({ x: e.clientX, y: e.clientY, tabId: tab.id, label: tab.label, color: tab.color })
+    setTabMenu({ x: e.clientX, y: e.clientY, tabId: tab.id, label: tab.label, color: tab.color, config: tab.config, sessionId: tab.sessionId, isLocal: tab.isLocal })
     setEditLabel(tab.label)
+  }
+
+  const handleSaveSession = async () => {
+    const { tabId, config } = tabMenu
+    await addSession(config)
+    updateTab(tabId, { sessionId: config.id })
+    setTabMenu(null)
   }
 
   const applyLabel = () => {
@@ -77,6 +84,9 @@ export default function TabBar() {
       {/* Tab right-click menu */}
       {tabMenu && (
         <div ref={menuRef} className="context-menu tab-ctx-menu" style={{ top: tabMenu.y, left: tabMenu.x }}>
+          {!tabMenu.sessionId && !tabMenu.isLocal && tabMenu.config && (
+            <button onClick={handleSaveSession}><Save size={13} /> Save Session</button>
+          )}
           <div className="ctx-section">
             <div className="ctx-label">Rename</div>
             <input

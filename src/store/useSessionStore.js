@@ -68,7 +68,7 @@ const useSessionStore = create((set, get) => ({
     const tab = {
       id,
       sessionId: session.id,
-      label: session.name || `${session.username}@${session.host}`,
+      label: session.name || `${session.username}@${session.host}${session.port && session.port !== 22 ? ':' + session.port : ''}`,
       config: { ...session },
       channelId: id,
       color: null,
@@ -85,7 +85,7 @@ const useSessionStore = create((set, get) => ({
     const tab = {
       id,
       sessionId: null,
-      label: `${config.username}@${config.host}`,
+      label: `${config.username}@${config.host}${config.port && config.port !== 22 ? ':' + config.port : ''}`,
       config,
       channelId: id,
       color: null,

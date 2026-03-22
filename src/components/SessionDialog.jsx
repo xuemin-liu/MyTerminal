@@ -43,7 +43,7 @@ export default function SessionDialog({ session, onClose }) {
 
   const buildData = () => ({
     id: session?.id || crypto.randomUUID(),
-    name: form.name || `${form.username}@${form.host}`,
+    name: form.name || `${form.username}@${form.host}${parseInt(form.port, 10) !== 22 ? ':' + form.port : ''}`,
     host: form.host,
     port: parseInt(form.port, 10) || 22,
     username: form.username,
