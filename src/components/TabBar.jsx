@@ -11,7 +11,7 @@ export default function TabBar() {
   const [tabMenu, setTabMenu] = useState(null)
   const [editLabel, setEditLabel] = useState('')
   const [wslDistros, setWslDistros] = useState([])
-  const [showWslMenu, setShowWslMenu] = useState(false)
+  const [wslMenuPos, setWslMenuPos] = useState(null)
   const menuRef = useRef(null)
   const wslMenuRef = useRef(null)
 
@@ -31,13 +31,13 @@ export default function TabBar() {
   }, [tabMenu])
 
   useEffect(() => {
-    if (!showWslMenu) return
+    if (!wslMenuPos) return
     const close = (e) => {
-      if (wslMenuRef.current && !wslMenuRef.current.contains(e.target)) setShowWslMenu(false)
+      if (wslMenuRef.current && !wslMenuRef.current.contains(e.target)) setWslMenuPos(null)
     }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
-  }, [showWslMenu])
+  }, [wslMenuPos])
 
   const handleClose = (e, tabId) => {
     e.stopPropagation()
@@ -64,7 +64,13 @@ export default function TabBar() {
 
   const handleWslOpen = (distro) => {
     openWslTab(distro)
-    setShowWslMenu(false)
+    setWslMenuPos(null)
+  }
+
+  const toggleWslMenu = (e) => {
+    if (wslMenuPos) { setWslMenuPos(null); return }
+    const rect = e.currentTarget.getBoundingClientRect()
+    setWslMenuPos({ x: rect.right, y: rect.bottom + 2 })
   }
 
   return (
@@ -99,18 +105,18 @@ export default function TabBar() {
 
         {/* WSL button — only shown on Windows with WSL distros available */}
         {wslDistros.length > 0 && (
-          <div style={{ position: 'relative' }} ref={wslMenuRef}>
+          <>
             <button
-              className={`icon-btn ${showWslMenu ? 'active' : ''}`}
-              onClick={() => setShowWslMenu((v) => !v)}
+              className={`icon-btn ${wslMenuPos ? 'active' : ''}`}
+              onClick={toggleWslMenu}
               title="New WSL terminal"
               style={{ fontSize: 10, gap: 2, display: 'flex', alignItems: 'center' }}
             >
               <Terminal size={13} />
               <span style={{ fontSize: 9, lineHeight: 1, opacity: 0.85 }}>WSL</span>
             </button>
-            {showWslMenu && (
-              <div className="context-menu" style={{ bottom: '100%', top: 'auto', left: 0, minWidth: 140 }}>
+            {wslMenuPos && (
+              <div ref={wslMenuRef} className="context-menu" style={{ top: wslMenuPos.y, right: window.innerWidth - wslMenuPos.x, width: 150 }}>
                 {wslDistros.map((d) => (
                   <button key={d} onClick={() => handleWslOpen(d)}>
                     <Terminal size={12} /> {d}
@@ -118,7 +124,7 @@ export default function TabBar() {
                 ))}
               </div>
             )}
-          </div>
+          </>
         )}
 
         <button className="icon-btn" onClick={openLocalTab} title="New local terminal">
