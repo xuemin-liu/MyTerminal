@@ -35,7 +35,7 @@ export default function App() {
                   className="tab-pane"
                   style={{ display: tab.id === activeTabId ? 'flex' : 'none' }}
                 >
-                  <TerminalTab tab={tab} />
+                  <TerminalTab tab={tab} isActive={tab.id === activeTabId} />
                 </div>
               ))
             )}

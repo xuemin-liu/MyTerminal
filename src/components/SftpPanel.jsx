@@ -173,12 +173,15 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
 
   const handleDrop = async (e) => {
     e.preventDefault()
+    const errors = []
     for (const file of Array.from(e.dataTransfer.files)) {
       const localPath = file.path
       if (!localPath) continue
       const name = localPath.replace(/\\/g, '/').split('/').pop()
-      await window.electronAPI.sftp.upload(channelId, localPath, joinPath(path, name))
+      const res = await window.electronAPI.sftp.upload(channelId, localPath, joinPath(path, name))
+      if (res?.error) errors.push(`${name}: ${res.error}`)
     }
+    if (errors.length) setError(errors.join('\n'))
     loadDir(path)
   }
 

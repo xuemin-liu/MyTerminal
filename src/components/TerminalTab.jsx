@@ -48,7 +48,7 @@ const stripAnsi = (s) => s
   .replace(/\x1b\][^\x07]*\x07/g, '')
   .replace(/\x1b[()][0-9A-Z]/g, '')
 
-export default function TerminalTab({ tab }) {
+export default function TerminalTab({ tab, isActive }) {
   const termRef = useRef(null)
   const terminalInstanceRef = useRef(null)
   const fitAddonRef = useRef(null)
@@ -124,8 +124,9 @@ export default function TerminalTab({ tab }) {
     if (el) el.scrollTop = el.scrollHeight
   }, [filterLines])
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — only active when this tab is visible
   useEffect(() => {
+    if (!isActive) return
     const handler = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'F') { e.preventDefault(); setShowSearch((v) => !v) }
       if (e.ctrlKey && e.key === 'k') { e.preventDefault(); setShowAi(true) }
@@ -137,7 +138,7 @@ export default function TerminalTab({ tab }) {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [isActive])
 
   // Context menu for copy/paste
   const handleContextMenu = (e) => {
@@ -221,6 +222,10 @@ export default function TerminalTab({ tab }) {
     // Reconnect logic
     const scheduleReconnect = () => {
       if (!isMountedRef.current || tab.isLocal) return
+      // Guard: cancel any in-progress timer before starting a new one so that
+      // multiple close/error events don't create parallel countdown loops.
+      clearInterval(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
       const attempt = reconnectAttemptRef.current + 1
       if (attempt > 5) {
         term.write('\r\n\x1b[31m[Max reconnect attempts reached]\x1b[0m\r\n')
