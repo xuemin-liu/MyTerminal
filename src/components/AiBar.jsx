@@ -52,7 +52,7 @@ export default function AiBar({ onRun, onClose, getSelection, isLocal }) {
 
   const handleRun = () => {
     const cmd = commandRef.current?.textContent || result?.value || ''
-    if (cmd) { onRun(cmd + '\n'); onClose() }
+    if (cmd) { onRun(cmd + '\r'); onClose() }
   }
 
   const currentCommand = result?.type === 'command' ? result.value : ''

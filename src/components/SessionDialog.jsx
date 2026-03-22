@@ -8,7 +8,7 @@ const DEFAULT_FORM = {
   group: '',
   useJump: false,
   jumpHost: '', jumpPort: '22', jumpUsername: '',
-  jumpAuthType: 'password', jumpPassword: '', jumpKeyPath: '',
+  jumpAuthType: 'password', jumpPassword: '', jumpKeyPath: '', jumpPassphrase: '',
 }
 
 export default function SessionDialog({ session, onClose }) {
@@ -34,6 +34,7 @@ export default function SessionDialog({ session, onClose }) {
         jumpAuthType: session.jumpAuthType || 'password',
         jumpPassword: session.jumpPassword || '',
         jumpKeyPath: session.jumpKeyPath || '',
+        jumpPassphrase: session.jumpPassphrase || '',
       })
     }
   }, [session])
@@ -58,6 +59,7 @@ export default function SessionDialog({ session, onClose }) {
       jumpAuthType: form.jumpAuthType,
       jumpPassword: form.jumpAuthType === 'password' ? form.jumpPassword : '',
       jumpKeyPath: form.jumpAuthType === 'key' ? form.jumpKeyPath : '',
+      jumpPassphrase: form.jumpAuthType === 'key' ? form.jumpPassphrase : '',
     } : {}),
   })
 
@@ -199,13 +201,20 @@ export default function SessionDialog({ session, onClose }) {
                     onChange={(e) => set('jumpPassword', e.target.value)} />
                 </div>
               ) : (
-                <div className="form-group">
-                  <label>Jump Key File</label>
-                  <div className="input-row">
-                    <input type="text" placeholder="/home/user/.ssh/id_rsa" value={form.jumpKeyPath} readOnly />
-                    <button className="browse-btn" onClick={() => browseKeyFile('jumpKeyPath')}>Browse</button>
+                <>
+                  <div className="form-group">
+                    <label>Jump Key File</label>
+                    <div className="input-row">
+                      <input type="text" placeholder="/home/user/.ssh/id_rsa" value={form.jumpKeyPath} readOnly />
+                      <button className="browse-btn" onClick={() => browseKeyFile('jumpKeyPath')}>Browse</button>
+                    </div>
                   </div>
-                </div>
+                  <div className="form-group">
+                    <label>Jump Passphrase (optional)</label>
+                    <input type="password" placeholder="Key passphrase" value={form.jumpPassphrase}
+                      onChange={(e) => set('jumpPassphrase', e.target.value)} />
+                  </div>
+                </>
               )}
             </div>
           )}

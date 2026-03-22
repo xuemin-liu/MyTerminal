@@ -9,7 +9,7 @@ const localTerminalManager = require('./local-terminal')
 const store = new Store({ name: 'sessions' })
 
 // ── Credential encryption (safeStorage / OS keychain) ──────────────────────────
-const SENSITIVE_FIELDS = ['password', 'passphrase', 'jumpPassword']
+const SENSITIVE_FIELDS = ['password', 'passphrase', 'jumpPassword', 'jumpPassphrase']
 
 function encryptField(value) {
   if (!value || typeof value !== 'string') return value
