@@ -109,6 +109,25 @@ const useSessionStore = create((set, get) => ({
       splitChannelId: null,
       splitConfig: null,
       isLocal: true,
+      wslDistro: null,
+    }
+    set((state) => ({ tabs: [...state.tabs, tab], activeTabId: id }))
+    return tab
+  },
+
+  openWslTab: (distro) => {
+    const id = crypto.randomUUID()
+    const tab = {
+      id,
+      sessionId: null,
+      label: distro ? `WSL: ${distro}` : 'WSL',
+      config: null,
+      channelId: id,
+      color: null,
+      splitChannelId: null,
+      splitConfig: null,
+      isLocal: true,
+      wslDistro: distro || null,
     }
     set((state) => ({ tabs: [...state.tabs, tab], activeTabId: id }))
     return tab

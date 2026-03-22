@@ -47,6 +47,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     export: (sessions) => ipcRenderer.invoke('sessions:export', sessions),
     import: () => ipcRenderer.invoke('sessions:import'),
   },
+  wsl: {
+    getDistros: () => ipcRenderer.invoke('wsl:getDistros'),
+  },
   favorites: {
     get: (sessionKey) => ipcRenderer.invoke('favorites:get', sessionKey),
     set: (sessionKey, paths) => ipcRenderer.invoke('favorites:set', sessionKey, paths),

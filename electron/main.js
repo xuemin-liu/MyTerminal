@@ -210,6 +210,24 @@ ipcMain.handle('sessions:import', async () => {
   }
 })
 
+// ── WSL ────────────────────────────────────────────────────────────────────────
+
+ipcMain.handle('wsl:getDistros', () => {
+  if (process.platform !== 'win32') return []
+  try {
+    const { execSync } = require('child_process')
+    // wsl --list --quiet outputs UTF-16LE on Windows
+    const raw = execSync('wsl --list --quiet', { encoding: 'buffer' })
+    return raw
+      .toString('utf16le')
+      .split(/\r?\n/)
+      .map((l) => l.replace(/\(Default\)/i, '').replace(/\x00/g, '').trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+})
+
 // ── SFTP Favorites ────────────────────────────────────────────────────────────
 
 ipcMain.handle('favorites:get', (_event, sessionKey) => {

@@ -277,8 +277,12 @@ export default function TerminalTab({ tab, isActive }) {
     const connectSSH = () => {
       if (!isMountedRef.current) return
       if (tab.isLocal) {
-        term.write('\r\n\x1b[90mStarting local terminal...\x1b[0m\r\n')
-        window.electronAPI.local.spawn(tab.channelId, {}).then((result) => {
+        const localLabel = tab.wslDistro ? `WSL: ${tab.wslDistro}` : 'local terminal'
+        term.write(`\r\n\x1b[90mStarting ${localLabel}...\x1b[0m\r\n`)
+        const spawnOpts = tab.wslDistro
+          ? { shell: 'wsl.exe', args: ['-d', tab.wslDistro] }
+          : {}
+        window.electronAPI.local.spawn(tab.channelId, spawnOpts).then((result) => {
           if (!isMountedRef.current) return
           if (result?.error) { setError(result.error); term.write('\r\n\x1b[31mError: ' + result.error + '\x1b[0m\r\n'); return }
           setConnected(true)

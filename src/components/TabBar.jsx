@@ -6,11 +6,20 @@ import SessionDialog from './SessionDialog'
 const TAB_COLORS = ['#58a6ff', '#3fb950', '#d29922', '#ff7b72', '#bc8cff', '#39c5cf', '#f78166', null]
 
 export default function TabBar() {
-  const { tabs, activeTabId, setActiveTab, closeTab, updateTab, addSession, broadcastMode, toggleBroadcast, openLocalTab } = useSessionStore()
+  const { tabs, activeTabId, setActiveTab, closeTab, updateTab, addSession, broadcastMode, toggleBroadcast, openLocalTab, openWslTab } = useSessionStore()
   const [quickConnect, setQuickConnect] = useState(false)
-  const [tabMenu, setTabMenu] = useState(null) // { x, y, tabId, label, color }
+  const [tabMenu, setTabMenu] = useState(null)
   const [editLabel, setEditLabel] = useState('')
+  const [wslDistros, setWslDistros] = useState([])
+  const [showWslMenu, setShowWslMenu] = useState(false)
   const menuRef = useRef(null)
+  const wslMenuRef = useRef(null)
+
+  useEffect(() => {
+    if (window.electronAPI.platform === 'win32') {
+      window.electronAPI.wsl.getDistros().then(setWslDistros)
+    }
+  }, [])
 
   useEffect(() => {
     if (!tabMenu) return
@@ -20,6 +29,15 @@ export default function TabBar() {
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [tabMenu])
+
+  useEffect(() => {
+    if (!showWslMenu) return
+    const close = (e) => {
+      if (wslMenuRef.current && !wslMenuRef.current.contains(e.target)) setShowWslMenu(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [showWslMenu])
 
   const handleClose = (e, tabId) => {
     e.stopPropagation()
@@ -42,6 +60,11 @@ export default function TabBar() {
   const applyLabel = () => {
     if (tabMenu) updateTab(tabMenu.tabId, { label: editLabel })
     setTabMenu(null)
+  }
+
+  const handleWslOpen = (distro) => {
+    openWslTab(distro)
+    setShowWslMenu(false)
   }
 
   return (
@@ -73,6 +96,31 @@ export default function TabBar() {
         >
           <Radio size={15} />
         </button>
+
+        {/* WSL button — only shown on Windows with WSL distros available */}
+        {wslDistros.length > 0 && (
+          <div style={{ position: 'relative' }} ref={wslMenuRef}>
+            <button
+              className={`icon-btn ${showWslMenu ? 'active' : ''}`}
+              onClick={() => setShowWslMenu((v) => !v)}
+              title="New WSL terminal"
+              style={{ fontSize: 10, gap: 2, display: 'flex', alignItems: 'center' }}
+            >
+              <Terminal size={13} />
+              <span style={{ fontSize: 9, lineHeight: 1, opacity: 0.85 }}>WSL</span>
+            </button>
+            {showWslMenu && (
+              <div className="context-menu" style={{ bottom: '100%', top: 'auto', left: 0, minWidth: 140 }}>
+                {wslDistros.map((d) => (
+                  <button key={d} onClick={() => handleWslOpen(d)}>
+                    <Terminal size={12} /> {d}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <button className="icon-btn" onClick={openLocalTab} title="New local terminal">
           <Monitor size={15} />
         </button>

@@ -26,11 +26,13 @@ class LocalTerminalManager {
       const env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
       const cwd = options.cwd || os.homedir()
 
+      const args = options.args || (isWin && !options.args ? [] : [])
+
       if (pty) {
         // PTY path — full terminal semantics
         let ptyProcess
         try {
-          ptyProcess = pty.spawn(shell, [], {
+          ptyProcess = pty.spawn(shell, args, {
             name: 'xterm-256color',
             cols: options.cols || 80,
             rows: options.rows || 24,
@@ -55,7 +57,7 @@ class LocalTerminalManager {
         const { spawn } = require('child_process')
         let proc
         try {
-          proc = spawn(shell, isWin ? ['-NoLogo'] : [], {
+          proc = spawn(shell, options.args !== undefined ? options.args : (isWin ? ['-NoLogo'] : []), {
             env, cwd, windowsHide: true,
           })
         } catch (err) {
