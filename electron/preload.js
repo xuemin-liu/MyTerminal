@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('ssh:error', handler)
     },
   },
+  local: {
+    spawn: (channelId, options) => ipcRenderer.invoke('local:spawn', channelId, options),
+    write: (channelId, data) => ipcRenderer.invoke('local:write', channelId, data),
+    resize: (channelId, cols, rows) => ipcRenderer.invoke('local:resize', channelId, cols, rows),
+    disconnect: (channelId) => ipcRenderer.invoke('local:disconnect', channelId),
+  },
   sftp: {
     list: (channelId, path) => ipcRenderer.invoke('sftp:list', channelId, path),
     download: (channelId, remotePath, localPath) =>
@@ -38,6 +44,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAll: () => ipcRenderer.invoke('sessions:getAll'),
     save: (session) => ipcRenderer.invoke('sessions:save', session),
     delete: (id) => ipcRenderer.invoke('sessions:delete', id),
+    export: (sessions) => ipcRenderer.invoke('sessions:export', sessions),
+    import: () => ipcRenderer.invoke('sessions:import'),
+  },
+  snippets: {
+    getAll: () => ipcRenderer.invoke('snippets:getAll'),
+    save: (snippet) => ipcRenderer.invoke('snippets:save', snippet),
+    delete: (id) => ipcRenderer.invoke('snippets:delete', id),
   },
   dialog: {
     openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),
@@ -52,5 +65,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     complete: (params) => ipcRenderer.invoke('ai:complete', params),
     setKey: (key) => ipcRenderer.invoke('ai:setKey', key),
     getKeyStatus: () => ipcRenderer.invoke('ai:getKeyStatus'),
+  },
+  notify: {
+    send: (title, body) => ipcRenderer.invoke('notify:send', title, body),
   },
 })

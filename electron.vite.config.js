@@ -10,6 +10,7 @@ export default defineConfig({
         input: {
           main: resolve(__dirname, 'electron/main.js'),
           'ssh-manager': resolve(__dirname, 'electron/ssh-manager.js'),
+          'local-terminal': resolve(__dirname, 'electron/local-terminal.js'),
         },
         output: {
           entryFileNames: '[name].js',

@@ -6,12 +6,15 @@ const useSessionStore = create((set, get) => ({
   sessions: [],
   tabs: [],
   activeTabId: null,
+  snippets: [],
+  broadcastMode: false,
 
   // ── Session actions ──────────────────────────────────────────────────────────
 
   loadSessions: async () => {
     const sessions = await window.electronAPI.sessions.getAll()
-    set({ sessions })
+    const snippets = await window.electronAPI.snippets.getAll()
+    set({ sessions, snippets })
   },
 
   addSession: async (session) => {
@@ -29,6 +32,36 @@ const useSessionStore = create((set, get) => ({
     set({ sessions: saved })
   },
 
+  exportSessions: async () => {
+    const { sessions } = get()
+    return await window.electronAPI.sessions.export(sessions)
+  },
+
+  importSessions: async () => {
+    const result = await window.electronAPI.sessions.import()
+    if (Array.isArray(result)) set({ sessions: result })
+    return result
+  },
+
+  // ── Snippet actions ──────────────────────────────────────────────────────────
+
+  addSnippet: async (snippet) => {
+    const saved = await window.electronAPI.snippets.save({
+      ...snippet,
+      id: snippet.id || crypto.randomUUID(),
+    })
+    set({ snippets: saved })
+  },
+
+  deleteSnippet: async (id) => {
+    const saved = await window.electronAPI.snippets.delete(id)
+    set({ snippets: saved })
+  },
+
+  // ── Broadcast ────────────────────────────────────────────────────────────────
+
+  toggleBroadcast: () => set((state) => ({ broadcastMode: !state.broadcastMode })),
+
   // ── Tab actions ──────────────────────────────────────────────────────────────
 
   openTab: (session) => {
@@ -38,12 +71,13 @@ const useSessionStore = create((set, get) => ({
       sessionId: session.id,
       label: session.name || `${session.username}@${session.host}`,
       config: { ...session },
-      channelId: id, // reuse tab id as channel id
+      channelId: id,
+      color: null,
+      splitChannelId: null,
+      splitConfig: null,
+      isLocal: false,
     }
-    set((state) => ({
-      tabs: [...state.tabs, tab],
-      activeTabId: id,
-    }))
+    set((state) => ({ tabs: [...state.tabs, tab], activeTabId: id }))
     return tab
   },
 
@@ -55,11 +89,29 @@ const useSessionStore = create((set, get) => ({
       label: `${config.username}@${config.host}`,
       config,
       channelId: id,
+      color: null,
+      splitChannelId: null,
+      splitConfig: null,
+      isLocal: false,
     }
-    set((state) => ({
-      tabs: [...state.tabs, tab],
-      activeTabId: id,
-    }))
+    set((state) => ({ tabs: [...state.tabs, tab], activeTabId: id }))
+    return tab
+  },
+
+  openLocalTab: () => {
+    const id = `tab-${++tabIdCounter}`
+    const tab = {
+      id,
+      sessionId: null,
+      label: 'Local Terminal',
+      config: null,
+      channelId: id,
+      color: null,
+      splitChannelId: null,
+      splitConfig: null,
+      isLocal: true,
+    }
+    set((state) => ({ tabs: [...state.tabs, tab], activeTabId: id }))
     return tab
   },
 
@@ -69,17 +121,35 @@ const useSessionStore = create((set, get) => ({
       let activeTabId = state.activeTabId
       if (activeTabId === tabId) {
         const idx = state.tabs.findIndex((t) => t.id === tabId)
-        if (tabs.length === 0) {
-          activeTabId = null
-        } else {
-          activeTabId = tabs[Math.min(idx, tabs.length - 1)].id
-        }
+        activeTabId = tabs.length === 0 ? null : tabs[Math.min(idx, tabs.length - 1)].id
       }
       return { tabs, activeTabId }
     })
   },
 
   setActiveTab: (tabId) => set({ activeTabId: tabId }),
+
+  updateTab: (tabId, patch) => set((state) => ({
+    tabs: state.tabs.map((t) => t.id === tabId ? { ...t, ...patch } : t),
+  })),
+
+  addSplitPane: (tabId) => {
+    const id = `tab-${++tabIdCounter}`
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.id === tabId ? { ...t, splitChannelId: id, splitConfig: { ...t.config } } : t
+      ),
+    }))
+    return id
+  },
+
+  removeSplitPane: (tabId) => {
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.id === tabId ? { ...t, splitChannelId: null, splitConfig: null } : t
+      ),
+    }))
+  },
 }))
 
 export default useSessionStore

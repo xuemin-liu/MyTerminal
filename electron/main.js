@@ -1,8 +1,10 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Notification } = require('electron')
 const path = require('path')
+const fs = require('fs')
 const Store = require('electron-store')
 const Anthropic = require('@anthropic-ai/sdk').default
 const sshManager = require('./ssh-manager')
+const localTerminalManager = require('./local-terminal')
 
 const store = new Store({ name: 'sessions' })
 
@@ -26,6 +28,7 @@ function createWindow() {
   })
 
   sshManager.setWindow(mainWindow)
+  localTerminalManager.setWindow(mainWindow)
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -36,13 +39,13 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     sshManager.disconnectAll()
+    localTerminalManager.disconnectAll()
     mainWindow = null
   })
 }
 
 app.whenReady().then(() => {
   createWindow()
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -50,87 +53,59 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   sshManager.disconnectAll()
+  localTerminalManager.disconnectAll()
   if (process.platform !== 'darwin') app.quit()
 })
 
-// ── SSH IPC handlers ───────────────────────────────────────────────────────────
+// ── SSH IPC ────────────────────────────────────────────────────────────────────
 
 ipcMain.handle('ssh:connect', async (_event, channelId, config) => {
-  try {
-    return await sshManager.connect(channelId, config)
-  } catch (err) {
-    return { error: err.message }
-  }
+  try { return await sshManager.connect(channelId, config) }
+  catch (err) { return { error: err.message } }
 })
+ipcMain.handle('ssh:write', (_event, channelId, data) => sshManager.write(channelId, data))
+ipcMain.handle('ssh:resize', (_event, channelId, cols, rows) => sshManager.resize(channelId, cols, rows))
+ipcMain.handle('ssh:disconnect', (_event, channelId) => sshManager.disconnect(channelId))
 
-ipcMain.handle('ssh:write', (_event, channelId, data) => {
-  sshManager.write(channelId, data)
+// ── Local terminal IPC ─────────────────────────────────────────────────────────
+
+ipcMain.handle('local:spawn', async (_event, channelId, options) => {
+  try { return await localTerminalManager.spawn(channelId, options) }
+  catch (err) { return { error: err.message } }
 })
+ipcMain.handle('local:write', (_event, channelId, data) => localTerminalManager.write(channelId, data))
+ipcMain.handle('local:resize', (_event, channelId, cols, rows) => localTerminalManager.resize(channelId, cols, rows))
+ipcMain.handle('local:disconnect', (_event, channelId) => localTerminalManager.disconnect(channelId))
 
-ipcMain.handle('ssh:resize', (_event, channelId, cols, rows) => {
-  sshManager.resize(channelId, cols, rows)
-})
-
-ipcMain.handle('ssh:disconnect', (_event, channelId) => {
-  sshManager.disconnect(channelId)
-})
-
-// ── SFTP IPC handlers ──────────────────────────────────────────────────────────
+// ── SFTP IPC ───────────────────────────────────────────────────────────────────
 
 ipcMain.handle('sftp:list', async (_event, channelId, remotePath) => {
-  try {
-    return await sshManager.sftpList(channelId, remotePath)
-  } catch (err) {
-    return { error: err.message }
-  }
+  try { return await sshManager.sftpList(channelId, remotePath) }
+  catch (err) { return { error: err.message } }
 })
-
 ipcMain.handle('sftp:download', async (_event, channelId, remotePath, localPath) => {
-  try {
-    return await sshManager.sftpDownload(channelId, remotePath, localPath)
-  } catch (err) {
-    return { error: err.message }
-  }
+  try { return await sshManager.sftpDownload(channelId, remotePath, localPath) }
+  catch (err) { return { error: err.message } }
 })
-
 ipcMain.handle('sftp:upload', async (_event, channelId, localPath, remotePath) => {
-  try {
-    return await sshManager.sftpUpload(channelId, localPath, remotePath)
-  } catch (err) {
-    return { error: err.message }
-  }
+  try { return await sshManager.sftpUpload(channelId, localPath, remotePath) }
+  catch (err) { return { error: err.message } }
 })
-
 ipcMain.handle('sftp:rename', async (_event, channelId, oldPath, newPath) => {
-  try {
-    return await sshManager.sftpRename(channelId, oldPath, newPath)
-  } catch (err) {
-    return { error: err.message }
-  }
+  try { return await sshManager.sftpRename(channelId, oldPath, newPath) }
+  catch (err) { return { error: err.message } }
 })
-
 ipcMain.handle('sftp:delete', async (_event, channelId, remotePath) => {
-  try {
-    return await sshManager.sftpDelete(channelId, remotePath)
-  } catch (err) {
-    return { error: err.message }
-  }
+  try { return await sshManager.sftpDelete(channelId, remotePath) }
+  catch (err) { return { error: err.message } }
 })
-
-ipcMain.handle('sftp:realpath', async (_event, channelId, remotePath) => {
-  try {
-    return await sshManager.sftpRealpath(channelId, remotePath)
-  } catch (err) {
-    return { error: err.message }
-  }
-})
-
 ipcMain.handle('sftp:mkdir', async (_event, channelId, remotePath) => {
-  try {
-    return await sshManager.sftpMkdir(channelId, remotePath)
-  } catch (err) {
-    return { error: err.message }
-  }
+  try { return await sshManager.sftpMkdir(channelId, remotePath) }
+  catch (err) { return { error: err.message } }
+})
+ipcMain.handle('sftp:realpath', async (_event, channelId, remotePath) => {
+  try { return await sshManager.sftpRealpath(channelId, remotePath) }
+  catch (err) { return { error: err.message } }
 })
 
 // ── File dialog ────────────────────────────────────────────────────────────────
@@ -138,16 +113,13 @@ ipcMain.handle('sftp:mkdir', async (_event, channelId, remotePath) => {
 ipcMain.handle('dialog:openFile', async (_event, options) => {
   return await dialog.showOpenDialog(mainWindow, options || {})
 })
-
 ipcMain.handle('dialog:saveFile', async (_event, options) => {
   return await dialog.showSaveDialog(mainWindow, options || {})
 })
 
 // ── Session persistence ────────────────────────────────────────────────────────
 
-ipcMain.handle('sessions:getAll', () => {
-  return store.get('sessions', [])
-})
+ipcMain.handle('sessions:getAll', () => store.get('sessions', []))
 
 ipcMain.handle('sessions:save', (_event, session) => {
   const sessions = store.get('sessions', [])
@@ -162,6 +134,68 @@ ipcMain.handle('sessions:delete', (_event, id) => {
   const sessions = store.get('sessions', []).filter((x) => x.id !== id)
   store.set('sessions', sessions)
   return sessions
+})
+
+ipcMain.handle('sessions:export', async (_event, sessions) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export Sessions',
+    defaultPath: 'myterminal-sessions.json',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  })
+  if (result.canceled) return { canceled: true }
+  fs.writeFileSync(result.filePath, JSON.stringify(sessions, null, 2), 'utf8')
+  return { success: true }
+})
+
+ipcMain.handle('sessions:import', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Import Sessions',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+    properties: ['openFile'],
+  })
+  if (result.canceled) return { canceled: true }
+  try {
+    const raw = fs.readFileSync(result.filePaths[0], 'utf8')
+    const imported = JSON.parse(raw)
+    if (!Array.isArray(imported)) return { error: 'Invalid file format' }
+    const existing = store.get('sessions', [])
+    const map = new Map(existing.map((s) => [s.id, s]))
+    for (const s of imported) {
+      if (s.id && s.host && s.username) map.set(s.id, s)
+    }
+    const merged = Array.from(map.values())
+    store.set('sessions', merged)
+    return merged
+  } catch (e) {
+    return { error: e.message }
+  }
+})
+
+// ── Snippets ───────────────────────────────────────────────────────────────────
+
+ipcMain.handle('snippets:getAll', () => store.get('snippets', []))
+
+ipcMain.handle('snippets:save', (_event, snippet) => {
+  const snippets = store.get('snippets', [])
+  const idx = snippets.findIndex((x) => x.id === snippet.id)
+  if (idx >= 0) snippets[idx] = snippet
+  else snippets.push(snippet)
+  store.set('snippets', snippets)
+  return snippets
+})
+
+ipcMain.handle('snippets:delete', (_event, id) => {
+  const snippets = store.get('snippets', []).filter((x) => x.id !== id)
+  store.set('snippets', snippets)
+  return snippets
+})
+
+// ── Notifications ──────────────────────────────────────────────────────────────
+
+ipcMain.handle('notify:send', (_event, title, body) => {
+  if (Notification.isSupported()) {
+    new Notification({ title, body, silent: false }).show()
+  }
 })
 
 // ── Window controls ────────────────────────────────────────────────────────────
@@ -190,7 +224,6 @@ ipcMain.handle('ai:complete', async (_event, { query, context, os }) => {
   if (!apiKey) return { error: 'NO_KEY' }
 
   const client = new Anthropic({ apiKey })
-
   const userMessage = context
     ? `Terminal output:\n\`\`\`\n${context.slice(0, 6000)}\n\`\`\`\n\nUser request: ${query}`
     : query
@@ -218,13 +251,8 @@ TXT:<plain text answer, no markdown>`,
     })
 
     const raw = response.content[0].text.trim()
-    if (raw.startsWith('CMD:')) {
-      return { type: 'command', value: raw.slice(4).trim() }
-    }
-    if (raw.startsWith('TXT:')) {
-      return { type: 'text', value: raw.slice(4).trim() }
-    }
-    // Fallback: single-line with no spaces → treat as command
+    if (raw.startsWith('CMD:')) return { type: 'command', value: raw.slice(4).trim() }
+    if (raw.startsWith('TXT:')) return { type: 'text', value: raw.slice(4).trim() }
     const text = raw.trim()
     const isCommand = !text.includes('\n') && text.split(' ').length <= 8
     return { type: isCommand ? 'command' : 'text', value: text }

@@ -3,7 +3,6 @@ const fs = require('fs')
 
 class SshManager {
   constructor() {
-    // channelId -> { client, stream, sftp }
     this.connections = new Map()
     this.mainWindow = null
   }
@@ -20,86 +19,136 @@ class SshManager {
 
   connect(channelId, config) {
     return new Promise((resolve, reject) => {
-      const client = new Client()
-
-      const connConfig = {
-        host: config.host,
-        port: config.port || 22,
-        username: config.username,
-      }
-
-      if (config.authType === 'key' && config.keyPath) {
-        try {
-          connConfig.privateKey = fs.readFileSync(config.keyPath)
-          if (config.passphrase) {
-            connConfig.passphrase = config.passphrase
-          }
-        } catch (e) {
-          reject(new Error(`Cannot read key file: ${e.message}`))
-          return
-        }
+      if (config.jumpHost && config.jumpHost.trim()) {
+        this._connectViaJump(channelId, config, resolve, reject)
       } else {
-        connConfig.password = config.password || ''
-      }
-
-      client.on('ready', () => {
-        client.shell({ term: 'xterm-256color', rows: 24, cols: 80 }, (err, stream) => {
-          if (err) {
-            client.end()
-            reject(err)
-            return
-          }
-
-          this.connections.set(channelId, { client, stream, sftp: null })
-
-          stream.on('data', (data) => {
-            this._emit('ssh:data', channelId, data.toString('utf8'))
-          })
-
-          stream.stderr.on('data', (data) => {
-            this._emit('ssh:data', channelId, data.toString('utf8'))
-          })
-
-          stream.on('close', () => {
-            this.connections.delete(channelId)
-            this._emit('ssh:close', channelId)
-          })
-
-          resolve({ channelId })
-        })
-      })
-
-      client.on('error', (err) => {
-        this.connections.delete(channelId)
-        this._emit('ssh:error', channelId, err.message)
-        reject(err)
-      })
-
-      client.on('end', () => {
-        this.connections.delete(channelId)
-        this._emit('ssh:close', channelId)
-      })
-
-      try {
-        client.connect(connConfig)
-      } catch (e) {
-        reject(e)
+        this._connectDirect(channelId, config, resolve, reject)
       }
     })
   }
 
+  _buildConnConfig(config) {
+    const connConfig = {
+      host: config.host,
+      port: config.port || 22,
+      username: config.username,
+    }
+    if (config.authType === 'key' && config.keyPath) {
+      connConfig.privateKey = fs.readFileSync(config.keyPath)
+      if (config.passphrase) connConfig.passphrase = config.passphrase
+    } else {
+      connConfig.password = config.password || ''
+    }
+    return connConfig
+  }
+
+  _openShell(channelId, client, jumpClient, resolve, reject) {
+    client.shell({ term: 'xterm-256color', rows: 24, cols: 80 }, (err, stream) => {
+      if (err) {
+        client.end()
+        if (jumpClient) jumpClient.end()
+        reject(err)
+        return
+      }
+
+      this.connections.set(channelId, { client, jumpClient: jumpClient || null, stream, sftp: null })
+
+      stream.on('data', (data) => {
+        this._emit('ssh:data', channelId, data.toString('utf8'))
+      })
+      stream.stderr.on('data', (data) => {
+        this._emit('ssh:data', channelId, data.toString('utf8'))
+      })
+      stream.on('close', () => {
+        this.connections.delete(channelId)
+        if (jumpClient) try { jumpClient.end() } catch (_) {}
+        this._emit('ssh:close', channelId)
+      })
+
+      resolve({ channelId })
+    })
+  }
+
+  _connectDirect(channelId, config, resolve, reject) {
+    const client = new Client()
+    const connConfig = this._buildConnConfig(config)
+
+    client.on('ready', () => {
+      this._openShell(channelId, client, null, resolve, reject)
+    })
+    client.on('error', (err) => {
+      this.connections.delete(channelId)
+      this._emit('ssh:error', channelId, err.message)
+      reject(err)
+    })
+    client.on('end', () => {
+      this.connections.delete(channelId)
+      this._emit('ssh:close', channelId)
+    })
+
+    try { client.connect(connConfig) } catch (e) { reject(e) }
+  }
+
+  _connectViaJump(channelId, config, resolve, reject) {
+    const jumpClient = new Client()
+    const jumpConfig = {
+      host: config.jumpHost.trim(),
+      port: parseInt(config.jumpPort, 10) || 22,
+      username: config.jumpUsername || '',
+    }
+    if (config.jumpAuthType === 'key' && config.jumpKeyPath) {
+      jumpConfig.privateKey = fs.readFileSync(config.jumpKeyPath)
+      if (config.jumpPassphrase) jumpConfig.passphrase = config.jumpPassphrase
+    } else {
+      jumpConfig.password = config.jumpPassword || ''
+    }
+
+    jumpClient.on('ready', () => {
+      jumpClient.forwardOut('127.0.0.1', 0, config.host, config.port || 22, (err, stream) => {
+        if (err) { jumpClient.end(); reject(err); return }
+
+        const client = new Client()
+        const connConfig = {
+          sock: stream,
+          username: config.username,
+        }
+        if (config.authType === 'key' && config.keyPath) {
+          connConfig.privateKey = fs.readFileSync(config.keyPath)
+          if (config.passphrase) connConfig.passphrase = config.passphrase
+        } else {
+          connConfig.password = config.password || ''
+        }
+
+        client.on('ready', () => {
+          this._openShell(channelId, client, jumpClient, resolve, reject)
+        })
+        client.on('error', (err) => {
+          this.connections.delete(channelId)
+          try { jumpClient.end() } catch (_) {}
+          this._emit('ssh:error', channelId, err.message)
+          reject(err)
+        })
+
+        try { client.connect(connConfig) } catch (e) { jumpClient.end(); reject(e) }
+      })
+    })
+
+    jumpClient.on('error', (err) => {
+      this._emit('ssh:error', channelId, `Jump host error: ${err.message}`)
+      reject(err)
+    })
+
+    try { jumpClient.connect(jumpConfig) } catch (e) { reject(e) }
+  }
+
   write(channelId, data) {
     const conn = this.connections.get(channelId)
-    if (conn && conn.stream) {
-      conn.stream.write(data)
-    }
+    if (conn && conn.stream) conn.stream.write(data)
   }
 
   resize(channelId, cols, rows) {
     const conn = this.connections.get(channelId)
-    if (conn && conn.stream) {
-      conn.stream.setWindow(rows, cols, 0, 0)
-    }
+    if (conn && conn.stream) conn.stream.setWindow(rows, cols, 0, 0)
   }
 
   disconnect(channelId) {
@@ -107,18 +156,18 @@ class SshManager {
     if (conn) {
       try { conn.stream.close() } catch (_) {}
       try { conn.client.end() } catch (_) {}
+      try { conn.jumpClient?.end() } catch (_) {}
       this.connections.delete(channelId)
     }
   }
 
-  // SFTP operations
+  // ── SFTP ─────────────────────────────────────────────────────────────────────
+
   _getSftp(channelId) {
     return new Promise((resolve, reject) => {
       const conn = this.connections.get(channelId)
       if (!conn) return reject(new Error('No connection for channelId: ' + channelId))
-
       if (conn.sftp) return resolve(conn.sftp)
-
       conn.client.sftp((err, sftp) => {
         if (err) return reject(err)
         conn.sftp = sftp
@@ -184,7 +233,6 @@ class SshManager {
     return new Promise((resolve, reject) => {
       sftp.unlink(remotePath, (err) => {
         if (err) {
-          // try rmdir for directories
           sftp.rmdir(remotePath, (err2) => {
             if (err2) return reject(err)
             resolve({ success: true })
@@ -196,22 +244,22 @@ class SshManager {
     })
   }
 
-  async sftpRealpath(channelId, remotePath) {
-    const sftp = await this._getSftp(channelId)
-    return new Promise((resolve, reject) => {
-      sftp.realpath(remotePath, (err, resolvedPath) => {
-        if (err) return reject(err)
-        resolve(resolvedPath)
-      })
-    })
-  }
-
   async sftpMkdir(channelId, remotePath) {
     const sftp = await this._getSftp(channelId)
     return new Promise((resolve, reject) => {
       sftp.mkdir(remotePath, (err) => {
         if (err) return reject(err)
         resolve({ success: true })
+      })
+    })
+  }
+
+  async sftpRealpath(channelId, remotePath) {
+    const sftp = await this._getSftp(channelId)
+    return new Promise((resolve, reject) => {
+      sftp.realpath(remotePath, (err, resolvedPath) => {
+        if (err) return reject(err)
+        resolve(resolvedPath)
       })
     })
   }
