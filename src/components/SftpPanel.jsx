@@ -4,12 +4,6 @@ import {
   FolderPlus, Trash2, Edit2, Home, Star, X,
 } from 'lucide-react'
 
-function loadFavorites(sessionKey) {
-  try { return JSON.parse(localStorage.getItem(`sftp-favorites:${sessionKey}`) || '[]') } catch { return [] }
-}
-function saveFavorites(sessionKey, favs) {
-  localStorage.setItem(`sftp-favorites:${sessionKey}`, JSON.stringify(favs))
-}
 
 function formatSize(bytes) {
   if (bytes == null) return ''
@@ -32,7 +26,7 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   const [selected, setSelected] = useState(null)
   const [renaming, setRenaming] = useState(null)
   const [renameValue, setRenameValue] = useState('')
-  const [favorites, setFavorites] = useState(() => loadFavorites(sessionKey))
+  const [favorites, setFavorites] = useState([])
   const [sftpHome, setSftpHome] = useState(null)
   const pathRef = useRef('/')
   const dropRef = useRef(null)
@@ -62,6 +56,11 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
       if (result && !result.error) setSftpHome(result)
     })
   }, [channelId])
+
+  // Load favorites from electron-store (persistent, survives app restarts)
+  useEffect(() => {
+    window.electronAPI.favorites.get(sessionKey).then(setFavorites)
+  }, [sessionKey])
 
   // Auto-navigate when terminal cwd changes
   useEffect(() => {
@@ -105,14 +104,14 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
       updated = [...favorites, path]
     }
     setFavorites(updated)
-    saveFavorites(sessionKey, updated)
+    window.electronAPI.favorites.set(sessionKey, updated)
   }
 
   const removeFavorite = (fav, e) => {
     e.stopPropagation()
     const updated = favorites.filter(f => f !== fav)
     setFavorites(updated)
-    saveFavorites(sessionKey, updated)
+    window.electronAPI.favorites.set(sessionKey, updated)
   }
 
   const goToFavorite = (fav) => {

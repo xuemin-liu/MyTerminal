@@ -209,6 +209,19 @@ ipcMain.handle('sessions:import', async () => {
   }
 })
 
+// ── SFTP Favorites ────────────────────────────────────────────────────────────
+
+ipcMain.handle('favorites:get', (_event, sessionKey) => {
+  const all = store.get('sftp-favorites', {})
+  return all[sessionKey] || []
+})
+
+ipcMain.handle('favorites:set', (_event, sessionKey, paths) => {
+  const all = store.get('sftp-favorites', {})
+  all[sessionKey] = paths
+  store.set('sftp-favorites', all)
+})
+
 // ── Snippets ───────────────────────────────────────────────────────────────────
 
 ipcMain.handle('snippets:getAll', () => store.get('snippets', []))
