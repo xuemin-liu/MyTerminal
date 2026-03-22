@@ -14,6 +14,8 @@ const TERMINAL_THEME = {
   brightCyan: '#56d4dd', brightWhite: '#f0f6fc',
 }
 
+const MAX_RECONNECT = 5
+
 export default function SplitTerminalPane({ channelId, config, onClose }) {
   const termRef = useRef(null)
 
@@ -34,15 +36,41 @@ export default function SplitTerminalPane({ channelId, config, onClose }) {
     term.open(termRef.current)
     fitAddon.fit()
 
-    term.write('\r\n\x1b[90mConnecting split pane to ' + config.host + '...\x1b[0m\r\n')
-    window.electronAPI.ssh.connect(channelId, config).then((result) => {
-      if (result?.error) {
-        term.write('\r\n\x1b[31mError: ' + result.error + '\x1b[0m\r\n')
+    let isMounted = true
+    let attempt = 0
+    let reconnectTimer = null
+
+    const connect = () => {
+      if (!isMounted) return
+      term.write('\r\n\x1b[90mConnecting split pane to ' + config.host + '...\x1b[0m\r\n')
+      window.electronAPI.ssh.connect(channelId, config).then((result) => {
+        if (!isMounted) return
+        if (result?.error) {
+          term.write('\r\n\x1b[31mError: ' + result.error + '\x1b[0m\r\n')
+          scheduleReconnect()
+          return
+        }
+        attempt = 0
+        fitAddon.fit()
+        window.electronAPI.ssh.resize(channelId, term.cols, term.rows)
+      })
+    }
+
+    const scheduleReconnect = () => {
+      if (!isMounted) return
+      attempt++
+      if (attempt > MAX_RECONNECT) {
+        term.write('\r\n\x1b[31m[Max reconnect attempts reached — close pane to dismiss]\x1b[0m\r\n')
         return
       }
-      fitAddon.fit()
-      window.electronAPI.ssh.resize(channelId, term.cols, term.rows)
-    })
+      let remaining = Math.min(30, attempt * 5)
+      term.write(`\r\n\x1b[33m[Reconnecting in ${remaining}s… attempt ${attempt}/${MAX_RECONNECT}]\x1b[0m\r\n`)
+      reconnectTimer = setInterval(() => {
+        if (!isMounted) { clearInterval(reconnectTimer); return }
+        remaining--
+        if (remaining <= 0) { clearInterval(reconnectTimer); connect() }
+      }, 1000)
+    }
 
     const inputDisposer = term.onData((data) => {
       window.electronAPI.ssh.write(channelId, data)
@@ -53,8 +81,8 @@ export default function SplitTerminalPane({ channelId, config, onClose }) {
     })
     const removeClose = window.electronAPI.ssh.onClose((cid) => {
       if (cid === channelId) {
-        term.write('\r\n\x1b[90m[Split pane closed]\x1b[0m\r\n')
-        onClose()
+        term.write('\r\n\x1b[90m[Split pane disconnected]\x1b[0m\r\n')
+        scheduleReconnect()
       }
     })
     const removeError = window.electronAPI.ssh.onError((cid, msg) => {
@@ -69,7 +97,11 @@ export default function SplitTerminalPane({ channelId, config, onClose }) {
     })
     if (termRef.current) resizeObs.observe(termRef.current.parentElement)
 
+    connect()
+
     return () => {
+      isMounted = false
+      clearInterval(reconnectTimer)
       inputDisposer.dispose()
       removeData(); removeClose(); removeError()
       resizeObs.disconnect()

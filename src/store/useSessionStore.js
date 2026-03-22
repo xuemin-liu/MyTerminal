@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 
-let tabIdCounter = 0
 
 const useSessionStore = create((set, get) => ({
   sessions: [],
@@ -65,7 +64,7 @@ const useSessionStore = create((set, get) => ({
   // ── Tab actions ──────────────────────────────────────────────────────────────
 
   openTab: (session) => {
-    const id = `tab-${++tabIdCounter}`
+    const id = crypto.randomUUID()
     const tab = {
       id,
       sessionId: session.id,
@@ -82,7 +81,7 @@ const useSessionStore = create((set, get) => ({
   },
 
   openQuickConnectTab: (config) => {
-    const id = `tab-${++tabIdCounter}`
+    const id = crypto.randomUUID()
     const tab = {
       id,
       sessionId: null,
@@ -99,7 +98,7 @@ const useSessionStore = create((set, get) => ({
   },
 
   openLocalTab: () => {
-    const id = `tab-${++tabIdCounter}`
+    const id = crypto.randomUUID()
     const tab = {
       id,
       sessionId: null,
@@ -134,7 +133,7 @@ const useSessionStore = create((set, get) => ({
   })),
 
   addSplitPane: (tabId) => {
-    const id = `tab-${++tabIdCounter}`
+    const id = crypto.randomUUID()
     set((state) => ({
       tabs: state.tabs.map((t) =>
         t.id === tabId ? { ...t, splitChannelId: id, splitConfig: { ...t.config } } : t

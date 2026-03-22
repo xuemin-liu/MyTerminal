@@ -4,13 +4,11 @@ import {
   FolderPlus, Trash2, Edit2, Home, Star, X,
 } from 'lucide-react'
 
-const FAVORITES_KEY = 'sftp-favorites'
-
-function loadFavorites() {
-  try { return JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]') } catch { return [] }
+function loadFavorites(sessionKey) {
+  try { return JSON.parse(localStorage.getItem(`sftp-favorites:${sessionKey}`) || '[]') } catch { return [] }
 }
-function saveFavorites(favs) {
-  localStorage.setItem(FAVORITES_KEY, JSON.stringify(favs))
+function saveFavorites(sessionKey, favs) {
+  localStorage.setItem(`sftp-favorites:${sessionKey}`, JSON.stringify(favs))
 }
 
 function formatSize(bytes) {
@@ -26,7 +24,7 @@ function formatDate(mtime) {
   return new Date(mtime * 1000).toLocaleDateString()
 }
 
-export default function SftpPanel({ channelId, cwd, width }) {
+export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default' }) {
   const [path, setPath] = useState('/')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
@@ -34,7 +32,7 @@ export default function SftpPanel({ channelId, cwd, width }) {
   const [selected, setSelected] = useState(null)
   const [renaming, setRenaming] = useState(null)
   const [renameValue, setRenameValue] = useState('')
-  const [favorites, setFavorites] = useState(loadFavorites)
+  const [favorites, setFavorites] = useState(() => loadFavorites(sessionKey))
   const [sftpHome, setSftpHome] = useState(null)
   const pathRef = useRef('/')
   const dropRef = useRef(null)
@@ -107,14 +105,14 @@ export default function SftpPanel({ channelId, cwd, width }) {
       updated = [...favorites, path]
     }
     setFavorites(updated)
-    saveFavorites(updated)
+    saveFavorites(sessionKey, updated)
   }
 
   const removeFavorite = (fav, e) => {
     e.stopPropagation()
     const updated = favorites.filter(f => f !== fav)
     setFavorites(updated)
-    saveFavorites(updated)
+    saveFavorites(sessionKey, updated)
   }
 
   const goToFavorite = (fav) => {

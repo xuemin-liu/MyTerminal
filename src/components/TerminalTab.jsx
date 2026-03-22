@@ -631,7 +631,12 @@ export default function TerminalTab({ tab }) {
                 window.addEventListener('mouseup', onUp)
               }}
             />
-            <SftpPanel channelId={tab.channelId} cwd={cwd} width={sftpWidth} />
+            <SftpPanel
+              channelId={tab.channelId}
+              cwd={cwd}
+              width={sftpWidth}
+              sessionKey={tab.config ? `${tab.config.host}:${tab.config.port || 22}` : tab.channelId}
+            />
           </>
         )}
       </div>

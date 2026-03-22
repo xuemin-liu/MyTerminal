@@ -228,20 +228,36 @@ class SshManager {
     })
   }
 
-  async sftpDelete(channelId, remotePath) {
-    const sftp = await this._getSftp(channelId)
+  _sftpDeleteRecursive(sftp, remotePath) {
     return new Promise((resolve, reject) => {
-      sftp.unlink(remotePath, (err) => {
+      sftp.readdir(remotePath, (err, list) => {
         if (err) {
-          sftp.rmdir(remotePath, (err2) => {
-            if (err2) return reject(err)
-            resolve({ success: true })
+          // Not a directory — try unlink as file
+          sftp.unlink(remotePath, (err2) => {
+            if (err2) reject(new Error(`Cannot delete "${remotePath}": ${err2.message}`))
+            else resolve()
           })
           return
         }
-        resolve({ success: true })
+        // Directory — delete all children then rmdir
+        const children = list || []
+        const next = (i) => {
+          if (i >= children.length) {
+            sftp.rmdir(remotePath, (e) => { if (e) reject(e); else resolve() })
+            return
+          }
+          const child = remotePath.replace(/\/$/, '') + '/' + children[i].filename
+          this._sftpDeleteRecursive(sftp, child).then(() => next(i + 1)).catch(reject)
+        }
+        next(0)
       })
     })
+  }
+
+  async sftpDelete(channelId, remotePath) {
+    const sftp = await this._getSftp(channelId)
+    await this._sftpDeleteRecursive(sftp, remotePath)
+    return { success: true }
   }
 
   async sftpMkdir(channelId, remotePath) {
