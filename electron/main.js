@@ -214,18 +214,20 @@ ipcMain.handle('sessions:import', async () => {
 
 ipcMain.handle('wsl:getDistros', () => {
   if (process.platform !== 'win32') return []
-  try {
-    const { execSync } = require('child_process')
-    // wsl --list --quiet outputs UTF-16LE on Windows
-    const raw = execSync('wsl --list --quiet', { encoding: 'buffer' })
-    return raw
-      .toString('utf16le')
-      .split(/\r?\n/)
-      .map((l) => l.replace(/\(Default\)/i, '').replace(/\x00/g, '').trim())
-      .filter(Boolean)
-  } catch {
-    return []
-  }
+  // Use async execFile with a timeout so a slow/misconfigured WSL never
+  // blocks the main-process event loop.
+  const { execFile } = require('child_process')
+  return new Promise((resolve) => {
+    execFile('wsl.exe', ['--list', '--quiet'], { encoding: 'buffer', timeout: 5000 }, (err, stdout) => {
+      if (err) { resolve([]); return }
+      const distros = stdout
+        .toString('utf16le')
+        .split(/\r?\n/)
+        .map((l) => l.replace(/\(Default\)/i, '').replace(/\x00/g, '').trim())
+        .filter(Boolean)
+      resolve(distros)
+    })
+  })
 })
 
 // ── SFTP Favorites ────────────────────────────────────────────────────────────

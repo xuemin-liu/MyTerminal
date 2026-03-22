@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Sparkles, Send, Play, X, Settings, Copy, Terminal, ScrollText } from 'lucide-react'
 
-export default function AiBar({ onRun, onClose, getSelection, getRecentOutput, isLocal }) {
+export default function AiBar({ onRun, onClose, getSelection, getRecentOutput, osHint }) {
   const [query, setQuery] = useState('')
   const [result, setResult] = useState(null)   // { type: 'command'|'text', value: string }
   const [loading, setLoading] = useState(false)
@@ -34,13 +34,10 @@ export default function AiBar({ onRun, onClose, getSelection, getRecentOutput, i
     setLoading(true)
     setError(null)
     setResult(null)
-    const osHint = isLocal
-      ? (window.electronAPI.platform === 'win32' ? 'Windows PowerShell' : 'Shell')
-      : 'Linux'
     const result = await window.electronAPI.ai.complete({
       query: q.trim(),
       context: context || undefined,
-      os: osHint,
+      os: osHint || 'Linux',
     })
     setLoading(false)
     if (result.error === 'NO_KEY') { setShowKeyInput(true); return }
