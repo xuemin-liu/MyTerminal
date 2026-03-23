@@ -515,35 +515,37 @@ export default function TerminalTab({ tab, isActive }) {
           </span>
         )}
 
-        <button className={`icon-btn ${showAi ? 'active' : ''}`} onClick={() => setShowAi((v) => !v)} title="AI assistant (Ctrl+K)">
-          <Sparkles size={16} />
-        </button>
-        <button className={`icon-btn ${showSearch ? 'active' : ''}`} onClick={() => setShowSearch((v) => !v)} title="Search terminal (Ctrl+Shift+F)">
-          <Search size={16} />
-        </button>
-        <button className={`icon-btn ${showFilter ? 'active' : ''}`} onClick={() => setShowFilter((v) => !v)} title="Filter output (Ctrl+F)">
-          <ListFilter size={16} />
-        </button>
-        <button className={`icon-btn ${colorize ? 'active' : ''}`} onClick={() => setColorize((v) => !v)} title="Toggle keyword colorization">
-          <Highlighter size={16} />
-        </button>
-        <button className={`icon-btn ${showSnippets ? 'active' : ''}`} onClick={() => setShowSnippets((v) => !v)} title="Snippets">
-          <Code2 size={16} />
-        </button>
-        {!tab.isLocal && (
-          <>
-            <button
-              className={`icon-btn ${tab.splitChannelId ? 'active' : ''}`}
-              onClick={() => tab.splitChannelId ? removeSplitPane(tab.id) : addSplitPane(tab.id)}
-              title="Split pane"
-            >
-              <SplitSquareHorizontal size={16} />
-            </button>
-            <button className={`icon-btn ${showSftp ? 'active' : ''}`} onClick={() => setShowSftp((v) => !v)} title="Toggle SFTP panel">
-              <PanelRight size={16} />
-            </button>
-          </>
-        )}
+        <div className="terminal-toolbar-actions">
+          <button className={`icon-btn ${showAi ? 'active' : ''}`} onClick={() => setShowAi((v) => !v)} title="AI assistant (Ctrl+K)">
+            <Sparkles size={16} />
+          </button>
+          <button className={`icon-btn ${showSearch ? 'active' : ''}`} onClick={() => setShowSearch((v) => !v)} title="Search terminal (Ctrl+Shift+F)">
+            <Search size={16} />
+          </button>
+          <button className={`icon-btn ${showFilter ? 'active' : ''}`} onClick={() => setShowFilter((v) => !v)} title="Filter output (Ctrl+F)">
+            <ListFilter size={16} />
+          </button>
+          <button className={`icon-btn ${colorize ? 'active' : ''}`} onClick={() => setColorize((v) => !v)} title="Toggle keyword colorization">
+            <Highlighter size={16} />
+          </button>
+          <button className={`icon-btn ${showSnippets ? 'active' : ''}`} onClick={() => setShowSnippets((v) => !v)} title="Snippets">
+            <Code2 size={16} />
+          </button>
+          {!tab.isLocal && (
+            <>
+              <button
+                className={`icon-btn ${tab.splitChannelId ? 'active' : ''}`}
+                onClick={() => tab.splitChannelId ? removeSplitPane(tab.id) : addSplitPane(tab.id)}
+                title="Split pane"
+              >
+                <SplitSquareHorizontal size={16} />
+              </button>
+              <button className={`icon-btn ${showSftp ? 'active' : ''}`} onClick={() => setShowSftp((v) => !v)} title="Toggle SFTP panel">
+                <PanelRight size={16} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* AI bar */}
