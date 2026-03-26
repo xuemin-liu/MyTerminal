@@ -119,6 +119,7 @@ export default function TerminalTab({ tab, isActive }) {
   const isMountedRef = useRef(true)
   const reconnectAttemptRef = useRef(0)
   const isRegexModeRef = useRef(false)
+  const lastBellRef = useRef(0)
 
   const { addSplitPane, removeSplitPane } = useSessionStore()
 
@@ -432,8 +433,12 @@ export default function TerminalTab({ tab, isActive }) {
     const removeData = window.electronAPI.ssh.onData((channelId, data) => {
       if (channelId !== tab.channelId) return
 
-      if (data.includes('\x07')) {
-        window.electronAPI.notify.send('Terminal Bell', `Activity in: ${tab.label}`)
+      if (data.includes('\x07') && !document.hasFocus()) {
+        const now = Date.now()
+        if (now - lastBellRef.current > 5000) {
+          lastBellRef.current = now
+          window.electronAPI.notify.send('Terminal Bell', `Activity in: ${tab.label}`)
+        }
       }
 
       term.write(colorizeRef.current ? colorizeOutput(data) : data)
