@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  Folder, File, ChevronLeft, RefreshCw, Upload, Download,
+  Folder, File, ChevronUp, ArrowLeft, ArrowRight, RefreshCw, Upload, Download,
   FolderPlus, Trash2, Edit2, Home, Star, X,
 } from 'lucide-react'
 
@@ -28,10 +28,14 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   const [renameValue, setRenameValue] = useState('')
   const [favorites, setFavorites] = useState([])
   const [sftpHome, setSftpHome] = useState(null)
+  const [canGoBack, setCanGoBack] = useState(false)
+  const [canGoForward, setCanGoForward] = useState(false)
   const pathRef = useRef('/')
   const dropRef = useRef(null)
+  const navHistoryRef = useRef([])
+  const historyIdxRef = useRef(-1)
 
-  const loadDir = async (dir, cdTerminal = false) => {
+  const loadDir = async (dir, cdTerminal = false, skipHistory = false) => {
     setLoading(true)
     setError(null)
     setSelected(null)
@@ -41,12 +45,37 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
     setItems(result)
     setPath(dir)
     pathRef.current = dir
+    if (!skipHistory) {
+      navHistoryRef.current = navHistoryRef.current.slice(0, historyIdxRef.current + 1)
+      navHistoryRef.current.push(dir)
+      historyIdxRef.current = navHistoryRef.current.length - 1
+      setCanGoBack(historyIdxRef.current > 0)
+      setCanGoForward(false)
+    }
     if (cdTerminal) {
       // Single-quote the path so spaces and most metacharacters are safe.
       // Escape any literal single-quotes inside the path (bash: 'it'\''s' trick).
       const safeDir = dir.replace(/'/g, "'\\''")
       window.electronAPI.ssh.write(channelId, `cd '${safeDir}'\r`)
     }
+  }
+
+  const goBack = () => {
+    if (historyIdxRef.current <= 0) return
+    historyIdxRef.current--
+    const dir = navHistoryRef.current[historyIdxRef.current]
+    setCanGoBack(historyIdxRef.current > 0)
+    setCanGoForward(true)
+    loadDir(dir, false, true)
+  }
+
+  const goForward = () => {
+    if (historyIdxRef.current >= navHistoryRef.current.length - 1) return
+    historyIdxRef.current++
+    const dir = navHistoryRef.current[historyIdxRef.current]
+    setCanGoBack(true)
+    setCanGoForward(historyIdxRef.current < navHistoryRef.current.length - 1)
+    loadDir(dir, false, true)
   }
 
   useEffect(() => {
@@ -189,8 +218,10 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
       style={width ? { width } : undefined}>
       {/* Toolbar */}
       <div className="sftp-toolbar">
+        <button className="icon-btn" onClick={goBack} title="Back" disabled={!canGoBack}><ArrowLeft size={15} /></button>
+        <button className="icon-btn" onClick={goForward} title="Forward" disabled={!canGoForward}><ArrowRight size={15} /></button>
+        <button className="icon-btn" onClick={goUp} title="Up" disabled={path === '/'}><ChevronUp size={15} /></button>
         <button className="icon-btn" onClick={() => loadDir(sftpHome || '/')} title="Home"><Home size={15} /></button>
-        <button className="icon-btn" onClick={goUp} title="Up" disabled={path === '/'}><ChevronLeft size={15} /></button>
         <span className="sftp-path">{path}</span>
         <button
           className={`icon-btn ${isFavorite ? 'active' : ''}`}
@@ -236,6 +267,14 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
               <tr><th>Name</th><th>Size</th><th>Modified</th></tr>
             </thead>
             <tbody>
+              {path !== '/' && (
+                <tr onClick={goUp}>
+                  <td colSpan={3}>
+                    <span className="sftp-file-icon"><Folder size={13} /></span>
+                    ..
+                  </td>
+                </tr>
+              )}
               {items.map(item => (
                 <tr
                   key={item.name}
