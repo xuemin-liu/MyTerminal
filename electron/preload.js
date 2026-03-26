@@ -59,6 +59,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     save: (snippet) => ipcRenderer.invoke('snippets:save', snippet),
     delete: (id) => ipcRenderer.invoke('snippets:delete', id),
   },
+  filterPresets: {
+    getAll: () => ipcRenderer.invoke('filterPresets:getAll'),
+    save: (preset) => ipcRenderer.invoke('filterPresets:save', preset),
+    delete: (id) => ipcRenderer.invoke('filterPresets:delete', id),
+  },
   dialog: {
     openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),
     saveFile: (options) => ipcRenderer.invoke('dialog:saveFile', options),

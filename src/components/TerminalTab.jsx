@@ -6,7 +6,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import {
   PanelRight, Highlighter, Sparkles, ListFilter, Search,
-  Code2, SplitSquareHorizontal,
+  Code2, SplitSquareHorizontal, Regex, Copy, Check, Bookmark,
 } from 'lucide-react'
 import SftpPanel from './SftpPanel'
 import AiBar from './AiBar'
@@ -21,9 +21,33 @@ const FILTER_PRESETS = [
   { label: 'Success', color: '#3fb950', pattern: 'success|succeeded|done|ok|passed|complete|completed' },
 ]
 
-function buildFilterRegex(text) {
-  const parts = text.split('|').map((p) => p.trim().replace(/[.*+?^${}()[\]\\]/g, '\\$&')).filter(Boolean)
-  return parts.length ? new RegExp(parts.join('|'), 'i') : null
+function parseFilter(text, isRegex) {
+  if (!text.trim()) return { includeRe: null, excludeRe: null, error: null }
+  const terms = text.split('|').map((t) => t.trim()).filter(Boolean)
+  const includeTerms = []
+  const excludeTerms = []
+  for (const term of terms) {
+    if ((term.startsWith('-') || term.startsWith('!')) && term.length > 1) {
+      excludeTerms.push(term.slice(1))
+    } else {
+      includeTerms.push(term)
+    }
+  }
+  const toPattern = (t) => isRegex ? t : t.replace(/[.*+?^${}()[\]\\]/g, '\\$&')
+  try {
+    const includeRe = includeTerms.length ? new RegExp(includeTerms.map(toPattern).join('|'), 'i') : null
+    const excludeRe = excludeTerms.length ? new RegExp(excludeTerms.map(toPattern).join('|'), 'i') : null
+    return { includeRe, excludeRe, error: null }
+  } catch (e) {
+    return { includeRe: null, excludeRe: null, error: e.message }
+  }
+}
+
+function matchesFilter(line, includeRe, excludeRe) {
+  if (!includeRe && !excludeRe) return false
+  if (includeRe && !includeRe.test(line)) return false
+  if (excludeRe && excludeRe.test(line)) return false
+  return true
 }
 
 function colorizeOutput(text) {
@@ -68,6 +92,10 @@ export default function TerminalTab({ tab, isActive }) {
   const [filterText, setFilterText] = useState('')
   const [filterLines, setFilterLines] = useState([])
   const [activePreset, setActivePreset] = useState(null)
+  const [isRegexMode, setIsRegexMode] = useState(false)
+  const [regexError, setRegexError] = useState(null)
+  const [copyFeedback, setCopyFeedback] = useState(false)
+  const [customPresets, setCustomPresets] = useState([])
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [caseSensitive, setCaseSensitive] = useState(false)
@@ -90,6 +118,7 @@ export default function TerminalTab({ tab, isActive }) {
   const reconnectTimerRef = useRef(null)
   const isMountedRef = useRef(true)
   const reconnectAttemptRef = useRef(0)
+  const isRegexModeRef = useRef(false)
 
   const { addSplitPane, removeSplitPane } = useSessionStore()
 
@@ -99,6 +128,7 @@ export default function TerminalTab({ tab, isActive }) {
   useEffect(() => { showAiRef.current = showAi }, [showAi])
   useEffect(() => { showSearchRef.current = showSearch }, [showSearch])
   useEffect(() => { showFilterRef.current = showFilter }, [showFilter])
+  useEffect(() => { isRegexModeRef.current = isRegexMode }, [isRegexMode])
 
   // Font size → update live terminal
   useEffect(() => {
@@ -120,15 +150,21 @@ export default function TerminalTab({ tab, isActive }) {
 
   // Re-run filter
   useEffect(() => {
-    const re = buildFilterRegex(filterText)
-    setFilterLines(re ? outputLinesRef.current.filter((l) => re.test(l)) : [])
-  }, [filterText])
+    const { includeRe, excludeRe, error } = parseFilter(filterText, isRegexMode)
+    setRegexError(error)
+    setFilterLines(filterText.trim() ? outputLinesRef.current.filter((l) => matchesFilter(l, includeRe, excludeRe)) : [])
+  }, [filterText, isRegexMode])
 
   // Scroll filter to bottom
   useEffect(() => {
     const el = filterResultsRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [filterLines])
+
+  // Load custom presets on mount
+  useEffect(() => {
+    window.electronAPI.filterPresets.getAll().then((p) => setCustomPresets(p || []))
+  }, [])
 
   // Keyboard shortcuts — fallback for when xterm does NOT have focus (e.g. toolbar, search bar)
   // Primary handling (when xterm IS focused) is done via attachCustomKeyEventHandler below.
@@ -418,8 +454,8 @@ export default function TerminalTab({ tab, isActive }) {
         }
       }
       if (changed && filterTextRef.current) {
-        const re = buildFilterRegex(filterTextRef.current)
-        if (re) setFilterLines(outputLinesRef.current.filter((l) => re.test(l)))
+        const { includeRe, excludeRe } = parseFilter(filterTextRef.current, isRegexModeRef.current)
+        if (includeRe || excludeRe) setFilterLines(outputLinesRef.current.filter((l) => matchesFilter(l, includeRe, excludeRe)))
       }
 
       // CWD detection — prefer OSC 7 (shell integration), fall back to prompt regex
@@ -495,8 +531,27 @@ export default function TerminalTab({ tab, isActive }) {
   const applyFilter = (text) => {
     setFilterText(text)
     filterTextRef.current = text
-    const re = buildFilterRegex(text)
-    setFilterLines(re ? outputLinesRef.current.filter((l) => re.test(l)) : [])
+    const { includeRe, excludeRe, error } = parseFilter(text, isRegexModeRef.current)
+    setRegexError(error)
+    setFilterLines(text.trim() ? outputLinesRef.current.filter((l) => matchesFilter(l, includeRe, excludeRe)) : [])
+  }
+
+  const handleSavePreset = async () => {
+    if (!filterText.trim() || customPresets.length >= 10) return
+    const newPreset = { id: crypto.randomUUID(), label: filterText.trim().slice(0, 24), pattern: filterText.trim(), color: '#8b949e' }
+    setCustomPresets(await window.electronAPI.filterPresets.save(newPreset))
+  }
+
+  const handleDeletePreset = async (id) => {
+    setCustomPresets(await window.electronAPI.filterPresets.delete(id))
+    if (activePreset === id) { setActivePreset(null); applyFilter('') }
+  }
+
+  const handleCopyMatches = () => {
+    if (!filterLines.length) return
+    navigator.clipboard.writeText(filterLines.join('\n'))
+    setCopyFeedback(true)
+    setTimeout(() => setCopyFeedback(false), 1500)
   }
 
   return (
@@ -606,13 +661,37 @@ export default function TerminalTab({ tab, isActive }) {
                 <ListFilter size={14} />
                 <input
                   ref={filterInputRef}
-                  className="filter-input"
-                  placeholder="Filter output… (use | for OR)"
+                  className={`filter-input${regexError ? ' filter-input-error' : ''}`}
+                  placeholder={isRegexMode ? 'Regex filter… (use | for OR, -pattern to exclude)' : 'Filter… (use | for OR, -pattern or !pattern to exclude)'}
                   value={filterText}
                   onChange={(e) => { setActivePreset(null); applyFilter(e.target.value) }}
                   onKeyDown={(e) => { if (e.key === 'Escape') { setShowFilter(false); applyFilter(''); setActivePreset(null) } }}
                 />
+                {regexError && <span className="filter-regex-error" title={regexError}>!</span>}
                 <span className="filter-count">{filterText ? `${filterLines.length} match${filterLines.length !== 1 ? 'es' : ''}` : ''}</span>
+                <button
+                  className={`icon-btn${isRegexMode ? ' active' : ''}`}
+                  title="Regex mode"
+                  onClick={() => setIsRegexMode((v) => !v)}
+                >
+                  <Regex size={14} />
+                </button>
+                <button
+                  className="icon-btn"
+                  title="Copy matched lines"
+                  onClick={handleCopyMatches}
+                  disabled={!filterLines.length}
+                >
+                  {copyFeedback ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+                <button
+                  className="icon-btn"
+                  title="Save as preset"
+                  onClick={handleSavePreset}
+                  disabled={!filterText.trim() || customPresets.length >= 10}
+                >
+                  <Bookmark size={14} />
+                </button>
                 <button className="icon-btn" onClick={() => { setShowFilter(false); applyFilter(''); setActivePreset(null) }}>✕</button>
               </div>
               <div className="filter-presets">
@@ -629,16 +708,33 @@ export default function TerminalTab({ tab, isActive }) {
                     {p.label}
                   </button>
                 ))}
+                {customPresets.map((p) => (
+                  <span key={p.id} className="filter-preset-chip-wrapper" style={{ '--chip-color': p.color }}>
+                    <button
+                      className={`filter-preset-chip ${activePreset === p.id ? 'active' : ''}`}
+                      style={{ '--chip-color': p.color }}
+                      onClick={() => {
+                        if (activePreset === p.id) { setActivePreset(null); applyFilter('') }
+                        else { setActivePreset(p.id); applyFilter(p.pattern) }
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                    <button className="filter-preset-delete" onClick={() => handleDeletePreset(p.id)} title="Delete preset">×</button>
+                  </span>
+                ))}
               </div>
               <div className="filter-results" ref={filterResultsRef}>
-                {!filterText ? (
+                {regexError ? (
+                  <div className="filter-empty" style={{ color: 'var(--danger)' }}>Invalid regex: {regexError}</div>
+                ) : !filterText ? (
                   <div className="filter-empty">Type to filter, or pick a preset above</div>
                 ) : filterLines.length === 0 ? (
                   <div className="filter-empty">No matches</div>
                 ) : filterLines.map((line, i) => {
-                  const re = buildFilterRegex(filterText)
+                  const { includeRe } = parseFilter(filterText, isRegexMode)
                   const safe = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                  const html = re ? safe.replace(re, (m) => `<mark class="filter-match">${m}</mark>`) : safe
+                  const html = includeRe ? safe.replace(includeRe, (m) => `<mark class="filter-match">${m}</mark>`) : safe
                   return <div key={i} className="filter-line" dangerouslySetInnerHTML={{ __html: html }} />
                 })}
               </div>

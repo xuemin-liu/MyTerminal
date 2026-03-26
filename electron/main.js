@@ -262,6 +262,24 @@ ipcMain.handle('snippets:delete', (_event, id) => {
   return snippets
 })
 
+// ── Filter Presets ─────────────────────────────────────────────────────────────
+
+ipcMain.handle('filterPresets:getAll', () => store.get('filter-presets', []))
+
+ipcMain.handle('filterPresets:save', (_e, preset) => {
+  const presets = store.get('filter-presets', [])
+  if (presets.length >= 10) return presets
+  presets.push(preset)
+  store.set('filter-presets', presets)
+  return presets
+})
+
+ipcMain.handle('filterPresets:delete', (_e, id) => {
+  const presets = store.get('filter-presets', []).filter((x) => x.id !== id)
+  store.set('filter-presets', presets)
+  return presets
+})
+
 // ── Notifications ──────────────────────────────────────────────────────────────
 
 ipcMain.handle('notify:send', (_event, title, body) => {
