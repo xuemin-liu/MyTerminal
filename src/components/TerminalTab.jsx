@@ -291,9 +291,8 @@ export default function TerminalTab({ tab, isActive }) {
         if (e.key === '0') { setFontSize(14); return false }
         if (e.key === 'c') {
           const isLinux = !tab.isLocal || !!tab.wslDistro || window.electronAPI.platform !== 'win32'
-          if (isLinux) {
-            const hasSelection = !!term.getSelection()
-            setCtrlCDialog({ hasSelection })
+          if (isLinux && !!term.getSelection()) {
+            setCtrlCDialog({ hasSelection: true })
             return false
           }
         }
@@ -771,21 +770,8 @@ export default function TerminalTab({ tab, isActive }) {
               <div className="ctrlc-dialog" onClick={(e) => e.stopPropagation()}>
                 <span className="ctrlc-label">Ctrl+C — Copy or Break?</span>
                 <div className="ctrlc-buttons">
-                  <button
-                    autoFocus={ctrlCDialog.hasSelection}
-                    className={`ctrlc-btn${ctrlCDialog.hasSelection ? ' primary' : ''}`}
-                    disabled={!ctrlCDialog.hasSelection}
-                    onClick={handleCtrlCCopy}
-                  >
-                    Copy
-                  </button>
-                  <button
-                    autoFocus={!ctrlCDialog.hasSelection}
-                    className={`ctrlc-btn${!ctrlCDialog.hasSelection ? ' primary' : ''}`}
-                    onClick={handleCtrlCBreak}
-                  >
-                    Break
-                  </button>
+                  <button autoFocus className="ctrlc-btn primary" onClick={handleCtrlCCopy}>Copy</button>
+                  <button className="ctrlc-btn" onClick={handleCtrlCBreak}>Break</button>
                 </div>
               </div>
             </div>
