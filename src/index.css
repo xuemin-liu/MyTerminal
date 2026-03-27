@@ -215,6 +215,30 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 .terminal-wrapper .xterm { height: 100%; }
 .terminal-wrapper .xterm-viewport { overflow-y: auto !important; }
 
+/* ── Sticky command overlay ──────────────────────────────────────────────────── */
+.sticky-cmd-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  background: rgba(22, 27, 34, 0.92);
+  border-bottom: 1px solid #30363d;
+  padding: 4px 12px;
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  font-size: 13px;
+  color: #58a6ff;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(4px);
+}
+.sticky-cmd-overlay:hover {
+  background: rgba(22, 27, 34, 0.98);
+  color: #79c0ff;
+}
+
 /* ── Filter overlay ──────────────────────────────────────────────────────────── */
 .filter-overlay {
   position: absolute;

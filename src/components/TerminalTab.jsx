@@ -104,6 +104,8 @@ export default function TerminalTab({ tab, isActive }) {
   const [fontSize, setFontSize] = useState(14)
   const [reconnectCountdown, setReconnectCountdown] = useState(null)
   const [showSnippets, setShowSnippets] = useState(false)
+  const [stickyCmd, setStickyCmd] = useState(null) // { text, line } or null
+  const [showStickyCmd, setShowStickyCmd] = useState(false)
 
   // Refs for async-safe access
   const colorizeRef = useRef(true)
@@ -121,6 +123,7 @@ export default function TerminalTab({ tab, isActive }) {
   const reconnectAttemptRef = useRef(0)
   const isRegexModeRef = useRef(false)
   const lastBellRef = useRef(0)
+  const stickyCmdRef = useRef(null)
 
   const { addSplitPane, removeSplitPane } = useSessionStore()
 
@@ -279,6 +282,20 @@ export default function TerminalTab({ tab, isActive }) {
     term.open(termRef.current)
     fitAddon.fit()
 
+    // Sticky command overlay: track scroll to show/hide
+    const checkStickyVisibility = () => {
+      const cmd = stickyCmdRef.current
+      if (!cmd) { setShowStickyCmd(false); return }
+      const viewportTop = term.buffer.active.viewportY
+      const viewportBottom = viewportTop + term.rows - 1
+      const isVisible = cmd.line >= viewportTop && cmd.line <= viewportBottom
+      setShowStickyCmd(!isVisible)
+    }
+    const scrollDisposer = term.onScroll(() => checkStickyVisibility())
+    const xtermViewport = termRef.current.querySelector('.xterm-viewport')
+    const handleViewportScroll = () => checkStickyVisibility()
+    if (xtermViewport) xtermViewport.addEventListener('scroll', handleViewportScroll)
+
     // Handle shortcuts before xterm sends them to the PTY/SSH channel.
     // Returning false prevents xterm from processing the key further.
     term.attachCustomKeyEventHandler((e) => {
@@ -418,6 +435,19 @@ export default function TerminalTab({ tab, isActive }) {
           })
           return
         }
+        // Capture the current line for sticky command overlay
+        const curLine = term.buffer.active.getLine(term.buffer.active.baseY + term.buffer.active.cursorY)
+        if (curLine) {
+          const raw = curLine.translateToString().trim()
+          // Strip common prompt prefixes (e.g. "user@host:~$", "$ ", "# ")
+          const cmdText = raw.replace(/^.*?[$#>]\s*/, '')
+          if (cmdText && cmdText.length > 0) {
+            const cmdObj = { text: cmdText, line: term.buffer.active.baseY + term.buffer.active.cursorY }
+            setStickyCmd(cmdObj)
+            stickyCmdRef.current = cmdObj
+            setShowStickyCmd(false)
+          }
+        }
         // Erase any locally-echoed partial prefix before sending Enter
         if (lineBuffer.length > 0) term.write('\b \b'.repeat(lineBuffer.length))
         lineBuffer = ''
@@ -524,6 +554,8 @@ export default function TerminalTab({ tab, isActive }) {
 
     cleanupRef.current = [
       () => inputDisposer.dispose(),
+      () => scrollDisposer.dispose(),
+      () => { if (xtermViewport) xtermViewport.removeEventListener('scroll', handleViewportScroll) },
       removeData, removeClose, removeError,
       () => resizeObs.disconnect(),
       () => { if (termContainer) termContainer.removeEventListener('wheel', handleWheel) },
@@ -676,6 +708,15 @@ export default function TerminalTab({ tab, isActive }) {
       <div className="terminal-split">
         <div className="terminal-wrapper">
           <div ref={termRef} onContextMenu={handleContextMenu} />
+
+          {/* Sticky command overlay */}
+          {showStickyCmd && stickyCmd && (
+            <div className="sticky-cmd-overlay" onClick={() => {
+              terminalInstanceRef.current?.scrollToLine(stickyCmd.line)
+            }}>
+              <span className="sticky-cmd-text">{stickyCmd.text}</span>
+            </div>
+          )}
 
           {/* Filter overlay */}
           {showFilter && (
