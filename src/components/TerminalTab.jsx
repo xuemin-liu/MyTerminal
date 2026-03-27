@@ -96,6 +96,7 @@ export default function TerminalTab({ tab, isActive }) {
   const [regexError, setRegexError] = useState(null)
   const [copyFeedback, setCopyFeedback] = useState(false)
   const [customPresets, setCustomPresets] = useState([])
+  const [ctrlCDialog, setCtrlCDialog] = useState(null) // null | { hasSelection: boolean }
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [caseSensitive, setCaseSensitive] = useState(false)
@@ -212,6 +213,16 @@ export default function TerminalTab({ tab, isActive }) {
     return () => window.removeEventListener('mousedown', close)
   }, [ctxMenu])
 
+  const handleCtrlCCopy = () => {
+    const sel = terminalInstanceRef.current?.getSelection()
+    if (sel) navigator.clipboard.writeText(sel)
+    setCtrlCDialog(null)
+  }
+  const handleCtrlCBreak = () => {
+    writeToChannel('\x03')
+    setCtrlCDialog(null)
+  }
+
   // Helper: write to the right channel type
   const writeToChannel = (data, channelId = tab.channelId) => {
     if (tab.isLocal) window.electronAPI.local.write(channelId, data)
@@ -278,6 +289,14 @@ export default function TerminalTab({ tab, isActive }) {
         if (e.key === '=' || e.key === '+') { setFontSize((s) => Math.min(32, s + 1)); return false }
         if (e.key === '-') { setFontSize((s) => Math.max(8, s - 1)); return false }
         if (e.key === '0') { setFontSize(14); return false }
+        if (e.key === 'c') {
+          const isLinux = !tab.isLocal || !!tab.wslDistro || window.electronAPI.platform !== 'win32'
+          if (isLinux) {
+            const hasSelection = !!term.getSelection()
+            setCtrlCDialog({ hasSelection })
+            return false
+          }
+        }
       }
       if (e.ctrlKey && e.shiftKey && !e.altKey && e.key === 'F') { setShowSearch((v) => !v); return false }
       if (e.key === 'Escape' && (showAiRef.current || showSearchRef.current || showFilterRef.current)) {
@@ -742,6 +761,32 @@ export default function TerminalTab({ tab, isActive }) {
                   const html = includeRe ? safe.replace(includeRe, (m) => `<mark class="filter-match">${m}</mark>`) : safe
                   return <div key={i} className="filter-line" dangerouslySetInnerHTML={{ __html: html }} />
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Ctrl+C dialog */}
+          {ctrlCDialog && (
+            <div className="ctrlc-backdrop" onClick={handleCtrlCBreak}>
+              <div className="ctrlc-dialog" onClick={(e) => e.stopPropagation()}>
+                <span className="ctrlc-label">Ctrl+C — Copy or Break?</span>
+                <div className="ctrlc-buttons">
+                  <button
+                    autoFocus={ctrlCDialog.hasSelection}
+                    className={`ctrlc-btn${ctrlCDialog.hasSelection ? ' primary' : ''}`}
+                    disabled={!ctrlCDialog.hasSelection}
+                    onClick={handleCtrlCCopy}
+                  >
+                    Copy
+                  </button>
+                  <button
+                    autoFocus={!ctrlCDialog.hasSelection}
+                    className={`ctrlc-btn${!ctrlCDialog.hasSelection ? ' primary' : ''}`}
+                    onClick={handleCtrlCBreak}
+                  >
+                    Break
+                  </button>
+                </div>
               </div>
             </div>
           )}
