@@ -19,10 +19,38 @@ class LocalTerminalManager {
     }
   }
 
+  _resolveShell(shell) {
+    if (process.platform !== 'win32') return shell
+    const path = require('path')
+    // If already absolute, use as-is
+    if (path.isAbsolute(shell)) return shell
+    // Search PATH ourselves — node-pty's conpty can fail to resolve relative names
+    // when System32 is missing from the Electron process PATH
+    const fs = require('fs')
+    const dirs = (process.env.Path || process.env.PATH || '').split(';')
+    // Also check common Windows dirs that may be absent from PATH
+    const extra = [
+      path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'),
+      path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0'),
+    ]
+    // Try the name as-is, then with PATHEXT extensions (e.g. pwsh → pwsh.exe)
+    const hasExt = path.extname(shell) !== ''
+    const exts = hasExt ? [''] : ['', ...(process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';')]
+    for (const dir of [...dirs, ...extra]) {
+      if (!dir) continue
+      for (const ext of exts) {
+        const full = path.join(dir, shell + ext)
+        try { if (fs.statSync(full).isFile()) return full } catch (_) {}
+      }
+    }
+    return shell // fallback to original, let node-pty try
+  }
+
   spawn(channelId, options = {}) {
     return new Promise((resolve, reject) => {
       const isWin = process.platform === 'win32'
-      const shell = options.shell || (isWin ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'))
+      let shell = (options.shell && options.shell.trim()) || (isWin ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'))
+      if (isWin) shell = this._resolveShell(shell)
       const env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
       const cwd = options.cwd || os.homedir()
 
