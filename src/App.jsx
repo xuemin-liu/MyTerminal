@@ -6,10 +6,10 @@ import useSessionStore from './store/useSessionStore'
 import TitleBar from './components/TitleBar'
 
 export default function App() {
-  const { tabs, activeTabId, loadSessions } = useSessionStore()
+  const { tabs, activeTabId, loadSessions, loadWorkspace } = useSessionStore()
 
   useEffect(() => {
-    loadSessions()
+    loadSessions().then(() => loadWorkspace())
   }, [])
 
   return (

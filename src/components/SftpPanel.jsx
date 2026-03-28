@@ -18,7 +18,7 @@ function formatDate(mtime) {
   return new Date(mtime * 1000).toLocaleDateString()
 }
 
-export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default' }) {
+export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default', onEditFile }) {
   const [path, setPath] = useState('/')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
@@ -110,6 +110,9 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
     if (item.type === 'd') {
       const newPath = path === '/' ? `/${item.name}` : `${path}/${item.name}`
       loadDir(newPath)
+    } else if (item.type === 'f' && onEditFile) {
+      const filePath = joinPath(path, item.name)
+      onEditFile(filePath)
     }
   }
 

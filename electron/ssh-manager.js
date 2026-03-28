@@ -30,7 +30,7 @@ class SshManager {
       host: config.host,
       port: config.port || 22,
       username: config.username,
-      keepaliveInterval: 10000,  // prevent silent NAT drops
+      keepaliveInterval: config.keepaliveInterval || 10000,
       keepaliveCountMax: 3,
     }
     if (config.authType === 'key' && config.keyPath) {
@@ -97,7 +97,7 @@ class SshManager {
       host: config.jumpHost.trim(),
       port: parseInt(config.jumpPort, 10) || 22,
       username: config.jumpUsername || '',
-      keepaliveInterval: 10000,
+      keepaliveInterval: config.keepaliveInterval || 10000,
       keepaliveCountMax: 3,
     }
     if (config.jumpAuthType === 'key' && config.jumpKeyPath) {
@@ -282,6 +282,59 @@ class SshManager {
       sftp.realpath(remotePath, (err, resolvedPath) => {
         if (err) return reject(err)
         resolve(resolvedPath)
+      })
+    })
+  }
+
+  async sftpReadFile(channelId, remotePath, maxBytes = 2 * 1024 * 1024) {
+    const sftp = await this._getSftp(channelId)
+    // Pre-check file size via stat
+    const stats = await new Promise((resolve, reject) => {
+      sftp.stat(remotePath, (err, s) => err ? reject(err) : resolve(s))
+    })
+    if (stats.size > maxBytes) {
+      throw new Error(`File too large to edit (${(stats.size / 1024 / 1024).toFixed(1)} MB, limit ${(maxBytes / 1024 / 1024).toFixed(0)} MB)`)
+    }
+    return new Promise((resolve, reject) => {
+      const chunks = []
+      let totalBytes = 0
+      const stream = sftp.createReadStream(remotePath)
+      stream.on('data', (chunk) => {
+        totalBytes += chunk.length
+        if (totalBytes > maxBytes) { stream.destroy(); reject(new Error('File too large')); return }
+        // Binary detection: check for null bytes in first chunk
+        if (chunks.length === 0 && chunk.includes && Buffer.isBuffer(chunk) && chunk.includes(0)) {
+          stream.destroy()
+          reject(new Error('File appears to be binary and cannot be edited as text'))
+          return
+        }
+        chunks.push(typeof chunk === 'string' ? chunk : chunk.toString('utf8'))
+      })
+      stream.on('end', () => resolve(chunks.join('')))
+      stream.on('error', reject)
+    })
+  }
+
+  async sftpWriteFile(channelId, remotePath, content) {
+    const sftp = await this._getSftp(channelId)
+    return new Promise((resolve, reject) => {
+      const stream = sftp.createWriteStream(remotePath, { encoding: 'utf8' })
+      stream.on('close', () => resolve({ success: true }))
+      stream.on('error', reject)
+      stream.end(content)
+    })
+  }
+
+  ping(channelId) {
+    return new Promise((resolve) => {
+      const conn = this.connections.get(channelId)
+      if (!conn || !conn.client) { resolve(-1); return }
+      const start = Date.now()
+      conn.client.exec('echo pong', (err, stream) => {
+        if (err) { resolve(-1); return }
+        stream.on('close', () => resolve(Date.now() - start))
+        stream.on('data', () => {})
+        stream.stderr.on('data', () => {})
       })
     })
   }

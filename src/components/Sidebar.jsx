@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Plus, Trash2, Edit2, Terminal, Download, Upload, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Edit2, Terminal, Download, Upload, ChevronDown, ChevronRight, Search, Settings, FileUp } from 'lucide-react'
 import useSessionStore from '../store/useSessionStore'
 import SessionDialog from './SessionDialog'
+import SettingsDialog from './SettingsDialog'
 
 export default function Sidebar() {
   const { sessions, openTab, deleteSession, exportSessions, importSessions } = useSessionStore()
@@ -9,6 +10,8 @@ export default function Sidebar() {
   const [editSession, setEditSession] = useState(null)
   const [contextMenu, setContextMenu] = useState(null)
   const [collapsed, setCollapsed] = useState(new Set())
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
   const menuRef = useRef(null)
 
   useEffect(() => {
@@ -44,8 +47,28 @@ export default function Sidebar() {
     if (result?.error) alert('Import failed: ' + result.error)
   }
 
+  const handleImportSshConfig = async () => {
+    const result = await window.electronAPI.sshconfig.import()
+    if (result?.error) { alert('SSH config import failed: ' + result.error); return }
+    if (result?.imported > 0) {
+      const store = useSessionStore.getState()
+      await store.loadSessions()
+    }
+  }
+
+  // Filter sessions by search query
+  const filteredSessions = searchQuery.trim()
+    ? sessions.filter((s) => {
+        const q = searchQuery.toLowerCase()
+        return (s.name || '').toLowerCase().includes(q) ||
+               (s.host || '').toLowerCase().includes(q) ||
+               (s.username || '').toLowerCase().includes(q) ||
+               (s.group || '').toLowerCase().includes(q)
+      })
+    : sessions
+
   // Group sessions
-  const grouped = sessions.reduce((acc, s) => {
+  const grouped = filteredSessions.reduce((acc, s) => {
     const key = s.group || ''
     if (!acc[key]) acc[key] = []
     acc[key].push(s)
@@ -76,15 +99,26 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-header">
         <span className="sidebar-title">Sessions</span>
+        <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings"><Settings size={15} /></button>
         <button className="icon-btn" onClick={exportSessions} title="Export sessions"><Download size={15} /></button>
         <button className="icon-btn" onClick={handleImport} title="Import sessions"><Upload size={15} /></button>
+        <button className="icon-btn" onClick={handleImportSshConfig} title="Import SSH Config"><FileUp size={15} /></button>
         <button className="icon-btn" onClick={() => { setEditSession(null); setDialogOpen(true) }} title="New Session">
           <Plus size={16} />
         </button>
       </div>
 
+      <div className="sidebar-search">
+        <Search size={13} />
+        <input
+          placeholder="Search sessions…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
       <div className="session-list">
-        {sessions.length === 0 && <div className="session-empty">No saved sessions</div>}
+        {filteredSessions.length === 0 && <div className="session-empty">{searchQuery ? 'No matches' : 'No saved sessions'}</div>}
 
         {groupKeys.map((key) => (
           <div key={key} className="session-group">
@@ -112,6 +146,10 @@ export default function Sidebar() {
           session={editSession}
           onClose={() => { setDialogOpen(false); setEditSession(null) }}
         />
+      )}
+
+      {showSettings && (
+        <SettingsDialog onClose={() => setShowSettings(false)} />
       )}
     </aside>
   )

@@ -7,13 +7,45 @@ const useSessionStore = create((set, get) => ({
   activeTabId: null,
   snippets: [],
   broadcastMode: false,
+  settings: {
+    defaultFontSize: 14,
+    defaultScrollback: 10000,
+    colorizeByDefault: true,
+    keepaliveInterval: 10000,
+    loggingEnabled: false,
+    logDirectory: '',
+  },
+
+  // ── Workspace persistence ────────────────────────────────────────────────────
+
+  saveWorkspace: () => {
+    const { tabs, activeTabId } = get()
+    // Only persist the serializable tab descriptors (no live state)
+    const serializedTabs = tabs.map(({ id, sessionId, label, config, channelId, color, isLocal, wslDistro }) => ({
+      id, sessionId, label, config, channelId, color, isLocal, wslDistro,
+    }))
+    window.electronAPI.workspace.set({ tabs: serializedTabs, activeTabId })
+  },
+
+  loadWorkspace: async () => {
+    const ws = await window.electronAPI.workspace.get()
+    if (!ws || !Array.isArray(ws.tabs) || ws.tabs.length === 0) return
+    // Restore tabs with full shape (fill in defaults for split pane fields)
+    const tabs = ws.tabs.map((t) => ({
+      ...t,
+      splitChannelId: null,
+      splitConfig: null,
+    }))
+    set({ tabs, activeTabId: ws.activeTabId || tabs[0]?.id || null })
+  },
 
   // ── Session actions ──────────────────────────────────────────────────────────
 
   loadSessions: async () => {
     const sessions = await window.electronAPI.sessions.getAll()
     const snippets = await window.electronAPI.snippets.getAll()
-    set({ sessions, snippets })
+    const settings = await window.electronAPI.settings.get()
+    set({ sessions, snippets, settings })
   },
 
   addSession: async (session) => {
@@ -55,6 +87,13 @@ const useSessionStore = create((set, get) => ({
   deleteSnippet: async (id) => {
     const saved = await window.electronAPI.snippets.delete(id)
     set({ snippets: saved })
+  },
+
+  // ── Settings ────────────────────────────────────────────────────────────────
+
+  updateSettings: async (patch) => {
+    const saved = await window.electronAPI.settings.set(patch)
+    set({ settings: saved })
   },
 
   // ── Broadcast ────────────────────────────────────────────────────────────────
@@ -151,6 +190,13 @@ const useSessionStore = create((set, get) => ({
     tabs: state.tabs.map((t) => t.id === tabId ? { ...t, ...patch } : t),
   })),
 
+  reorderTabs: (fromIndex, toIndex) => set((state) => {
+    const tabs = [...state.tabs]
+    const [moved] = tabs.splice(fromIndex, 1)
+    tabs.splice(toIndex, 0, moved)
+    return { tabs }
+  }),
+
   addSplitPane: (tabId) => {
     const id = crypto.randomUUID()
     set((state) => ({
@@ -169,5 +215,16 @@ const useSessionStore = create((set, get) => ({
     }))
   },
 }))
+
+// Auto-save workspace when tabs or activeTabId change
+let prevTabs = null
+let prevActiveTabId = null
+useSessionStore.subscribe((state) => {
+  if (state.tabs !== prevTabs || state.activeTabId !== prevActiveTabId) {
+    prevTabs = state.tabs
+    prevActiveTabId = state.activeTabId
+    state.saveWorkspace()
+  }
+})
 
 export default useSessionStore

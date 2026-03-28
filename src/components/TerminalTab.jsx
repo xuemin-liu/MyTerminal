@@ -7,72 +7,20 @@ import '@xterm/xterm/css/xterm.css'
 import {
   PanelRight, Highlighter, Sparkles, ListFilter, Search,
   Code2, SplitSquareHorizontal, Regex, Copy, Check, Bookmark,
+  FileText, Download, Network,
 } from 'lucide-react'
 import SftpPanel from './SftpPanel'
 import AiBar from './AiBar'
 import SnippetPanel from './SnippetPanel'
 import SplitTerminalPane from './SplitTerminalPane'
+import TunnelPanel from './TunnelPanel'
+import FileEditor from './FileEditor'
 import useSessionStore from '../store/useSessionStore'
-
-const FILTER_PRESETS = [
-  { label: 'Error',   color: '#ff7b72', pattern: 'error|errors|failed|failure|fatal|exception|traceback|critical' },
-  { label: 'Warning', color: '#d29922', pattern: 'warning|warnings|warn|deprecated|caution' },
-  { label: 'Info',    color: '#39c5cf', pattern: 'info|note|hint|notice' },
-  { label: 'Success', color: '#3fb950', pattern: 'success|succeeded|done|ok|passed|complete|completed' },
-]
-
-function parseFilter(text, isRegex) {
-  if (!text.trim()) return { includeRe: null, excludeRe: null, error: null }
-  const terms = text.split('|').map((t) => t.trim()).filter(Boolean)
-  const includeTerms = []
-  const excludeTerms = []
-  for (const term of terms) {
-    if ((term.startsWith('-') || term.startsWith('!')) && term.length > 1) {
-      excludeTerms.push(term.slice(1))
-    } else {
-      includeTerms.push(term)
-    }
-  }
-  const toPattern = (t) => isRegex ? t : t.replace(/[.*+?^${}()[\]\\]/g, '\\$&')
-  try {
-    const includeRe = includeTerms.length ? new RegExp(includeTerms.map(toPattern).join('|'), 'i') : null
-    const excludeRe = excludeTerms.length ? new RegExp(excludeTerms.map(toPattern).join('|'), 'i') : null
-    return { includeRe, excludeRe, error: null }
-  } catch (e) {
-    return { includeRe: null, excludeRe: null, error: e.message }
-  }
-}
-
-function matchesFilter(line, includeRe, excludeRe) {
-  if (!includeRe && !excludeRe) return false
-  if (includeRe && !includeRe.test(line)) return false
-  if (excludeRe && excludeRe.test(line)) return false
-  return true
-}
-
-function colorizeOutput(text) {
-  const parts = text.split(/(\x1b\[[0-9;]*m)/)
-  let insideColor = false
-  return parts.map((part) => {
-    if (/^\x1b\[/.test(part)) {
-      insideColor = part !== '\x1b[0m' && part !== '\x1b[m'
-      return part
-    }
-    if (insideColor) return part
-    return part
-      .replace(/\b(error|errors|failed|failure|fatal|exception|traceback|critical)\b/gi, '\x1b[1;31m$1\x1b[0m')
-      .replace(/\b(warning|warnings|warn|deprecated|caution)\b/gi, '\x1b[1;33m$1\x1b[0m')
-      .replace(/\b(info|note|hint|notice)\b/gi, '\x1b[36m$1\x1b[0m')
-      .replace(/\b(success|succeeded|done|ok|passed|complete|completed)\b/gi, '\x1b[32m$1\x1b[0m')
-  }).join('')
-}
-
-const stripAnsi = (s) => s
-  .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
-  .replace(/\x1b\][^\x07]*\x07/g, '')
-  .replace(/\x1b[()][0-9A-Z]/g, '')
+import { FILTER_PRESETS, parseFilter, matchesFilter, colorizeOutput, stripAnsi } from '../utils/terminalUtils'
 
 export default function TerminalTab({ tab, isActive }) {
+  const { addSplitPane, removeSplitPane, settings } = useSessionStore()
+
   const termRef = useRef(null)
   const terminalInstanceRef = useRef(null)
   const fitAddonRef = useRef(null)
@@ -86,7 +34,7 @@ export default function TerminalTab({ tab, isActive }) {
   const [cwd, setCwd] = useState(null)
   const [sftpWidth, setSftpWidth] = useState(380)
   const [showAi, setShowAi] = useState(false)
-  const [colorize, setColorize] = useState(true)
+  const [colorize, setColorize] = useState(settings.colorizeByDefault)
   const [ctxMenu, setCtxMenu] = useState(null)
   const [showFilter, setShowFilter] = useState(false)
   const [filterText, setFilterText] = useState('')
@@ -101,11 +49,15 @@ export default function TerminalTab({ tab, isActive }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [caseSensitive, setCaseSensitive] = useState(false)
   const [wholeWord, setWholeWord] = useState(false)
-  const [fontSize, setFontSize] = useState(14)
+  const [fontSize, setFontSize] = useState(settings.defaultFontSize || 14)
   const [reconnectCountdown, setReconnectCountdown] = useState(null)
   const [showSnippets, setShowSnippets] = useState(false)
   const [stickyCmd, setStickyCmd] = useState(null) // { text, line } or null
   const [showStickyCmd, setShowStickyCmd] = useState(false)
+  const [latency, setLatency] = useState(null)
+  const [logging, setLogging] = useState(false)
+  const [showTunnels, setShowTunnels] = useState(false)
+  const [editingFile, setEditingFile] = useState(null)
 
   // Refs for async-safe access
   const colorizeRef = useRef(true)
@@ -124,8 +76,7 @@ export default function TerminalTab({ tab, isActive }) {
   const isRegexModeRef = useRef(false)
   const lastBellRef = useRef(0)
   const stickyCmdRef = useRef(null)
-
-  const { addSplitPane, removeSplitPane } = useSessionStore()
+  const loggingRef = useRef(false)
 
   // Sync refs
   useEffect(() => { colorizeRef.current = colorize }, [colorize])
@@ -134,6 +85,7 @@ export default function TerminalTab({ tab, isActive }) {
   useEffect(() => { showSearchRef.current = showSearch }, [showSearch])
   useEffect(() => { showFilterRef.current = showFilter }, [showFilter])
   useEffect(() => { isRegexModeRef.current = isRegexMode }, [isRegexMode])
+  useEffect(() => { loggingRef.current = logging }, [logging])
 
   // Font size → update live terminal
   useEffect(() => {
@@ -165,6 +117,20 @@ export default function TerminalTab({ tab, isActive }) {
     const el = filterResultsRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [filterLines])
+
+  // Latency polling for SSH connections
+  useEffect(() => {
+    if (tab.isLocal || !connected) { setLatency(null); return }
+    let active = true
+    const poll = async () => {
+      if (!active) return
+      const ms = await window.electronAPI.ssh.ping(tab.channelId)
+      if (active) setLatency(ms >= 0 ? ms : null)
+    }
+    poll()
+    const timer = setInterval(poll, 30000)
+    return () => { active = false; clearInterval(timer) }
+  }, [tab.isLocal, connected, tab.channelId])
 
   // Load custom presets on mount
   useEffect(() => {
@@ -261,10 +227,10 @@ export default function TerminalTab({ tab, isActive }) {
         brightCyan: '#56d4dd', brightWhite: '#f0f6fc',
       },
       fontFamily: '"Cascadia Code", "Fira Code", "Consolas", monospace',
-      fontSize: 14,
+      fontSize: settings.defaultFontSize || 14,
       lineHeight: 1.2,
       cursorBlink: true,
-      scrollback: 10000,
+      scrollback: settings.defaultScrollback || 10000,
       allowProposedApi: true,
       bellStyle: 'sound',
     })
@@ -346,6 +312,15 @@ export default function TerminalTab({ tab, isActive }) {
       reconnectTimerRef.current = tick
     }
 
+    const autoStartLogging = () => {
+      if (settings.loggingEnabled && !loggingRef.current) {
+        const logDir = settings.logDirectory || ''
+        window.electronAPI.logging.start(tab.channelId, logDir).then((res) => {
+          if (res?.success) { setLogging(true) }
+        })
+      }
+    }
+
     const connectSSH = () => {
       if (!isMountedRef.current) return
       if (tab.isLocal) {
@@ -358,11 +333,13 @@ export default function TerminalTab({ tab, isActive }) {
           if (!isMountedRef.current) return
           if (result?.error) { setError(result.error); term.write('\r\n\x1b[31mError: ' + result.error + '\x1b[0m\r\n'); return }
           setConnected(true)
+          autoStartLogging()
           fitAddon.fit()
         })
       } else {
         term.write('\r\n\x1b[90mConnecting to ' + tab.config.host + '...\x1b[0m\r\n')
-        window.electronAPI.ssh.connect(tab.channelId, tab.config).then((result) => {
+        const connConfig = { ...tab.config, keepaliveInterval: settings.keepaliveInterval || 10000 }
+        window.electronAPI.ssh.connect(tab.channelId, connConfig).then((result) => {
           if (!isMountedRef.current) return
           if (result?.error) {
             setError(result.error)
@@ -374,6 +351,7 @@ export default function TerminalTab({ tab, isActive }) {
           reconnectAttemptRef.current = 0
           clearTimeout(reconnectTimerRef.current)
           setReconnectCountdown(null)
+          autoStartLogging()
           fitAddon.fit()
           window.electronAPI.ssh.resize(tab.channelId, term.cols, term.rows)
         })
@@ -491,6 +469,11 @@ export default function TerminalTab({ tab, isActive }) {
 
       term.write(colorizeRef.current ? colorizeOutput(data) : data)
 
+      // Session logging — fire-and-forget
+      if (loggingRef.current) {
+        window.electronAPI.logging.write(tab.channelId, stripAnsi(data))
+      }
+
       const plain = stripAnsi(data)
 
       // Line buffer for filter
@@ -530,6 +513,9 @@ export default function TerminalTab({ tab, isActive }) {
       if (channelId === tab.channelId) {
         term.write('\r\n\x1b[90m[Connection closed]\x1b[0m\r\n')
         setConnected(false)
+        // Tear down any tunnels tied to this channel — the SSH client
+        // they depend on is gone, so ports/forwards would be stale.
+        window.electronAPI.tunnel.stopByChannel(tab.channelId)
         scheduleReconnect()
       }
     })
@@ -562,6 +548,8 @@ export default function TerminalTab({ tab, isActive }) {
       () => clearInterval(reconnectTimerRef.current),
       () => {
         isMountedRef.current = false
+        if (loggingRef.current) window.electronAPI.logging.stop(tab.channelId)
+        window.electronAPI.tunnel.stopByChannel(tab.channelId)
         if (tab.isLocal) window.electronAPI.local.disconnect(tab.channelId)
         else window.electronAPI.ssh.disconnect(tab.channelId)
         term.dispose()
@@ -574,7 +562,7 @@ export default function TerminalTab({ tab, isActive }) {
   // Refit when panels toggle
   useEffect(() => {
     setTimeout(() => { try { fitAddonRef.current?.fit() } catch (_) {} }, 100)
-  }, [showSftp, showSnippets])
+  }, [showSftp, showSnippets, showTunnels])
 
   const doSearch = (direction = 'next') => {
     if (!searchQuery) return
@@ -602,6 +590,48 @@ export default function TerminalTab({ tab, isActive }) {
     if (activePreset === id) { setActivePreset(null); applyFilter('') }
   }
 
+  const toggleLogging = async () => {
+    if (logging) {
+      await window.electronAPI.logging.stop(tab.channelId)
+      setLogging(false)
+    } else {
+      const logDir = settings.logDirectory || ''
+      const result = await window.electronAPI.logging.start(tab.channelId, logDir)
+      if (result?.success) setLogging(true)
+    }
+  }
+
+  const handleExport = async () => {
+    const content = outputLinesRef.current.join('\n')
+    await window.electronAPI.logging.export(content)
+  }
+
+  const handleEditFile = async (remotePath) => {
+    const content = await window.electronAPI.sftp.readFile(tab.channelId, remotePath)
+    if (content?.error) {
+      // Show error to user for binary/size rejections
+      if (terminalInstanceRef.current) {
+        terminalInstanceRef.current.write(`\r\n\x1b[33m[Editor] ${content.error}\x1b[0m\r\n`)
+      }
+      return
+    }
+    setEditingFile({ remotePath, content, original: content })
+  }
+
+  const handleSaveFile = async () => {
+    if (!editingFile) return
+    const result = await window.electronAPI.sftp.writeFile(tab.channelId, editingFile.remotePath, editingFile.content)
+    if (result?.error) return
+    setEditingFile((prev) => prev ? { ...prev, original: prev.content } : null)
+  }
+
+  const handleCloseEditor = () => {
+    if (editingFile && editingFile.content !== editingFile.original) {
+      if (!confirm('You have unsaved changes. Discard them?')) return
+    }
+    setEditingFile(null)
+  }
+
   const handleCopyMatches = () => {
     if (!filterLines.length) return
     navigator.clipboard.writeText(filterLines.join('\n'))
@@ -617,6 +647,12 @@ export default function TerminalTab({ tab, isActive }) {
           <span className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
           {connected ? 'Connected' : error ? 'Error' : 'Connecting...'}
         </span>
+
+        {latency !== null && (
+          <span className={`latency-badge ${latency < 100 ? 'good' : latency < 500 ? 'warn' : 'bad'}`}>
+            {latency}ms
+          </span>
+        )}
 
         {reconnectCountdown !== null && (
           <span className="reconnect-badge">
@@ -638,11 +674,24 @@ export default function TerminalTab({ tab, isActive }) {
           <button className={`icon-btn ${colorize ? 'active' : ''}`} onClick={() => setColorize((v) => !v)} title="Toggle keyword colorization">
             <Highlighter size={16} />
           </button>
+          <button className={`icon-btn ${logging ? 'active' : ''}`} onClick={toggleLogging} title={logging ? 'Stop logging' : 'Start logging'}>
+            <FileText size={16} />
+          </button>
+          <button className="icon-btn" onClick={handleExport} title="Export terminal output">
+            <Download size={16} />
+          </button>
           <button className={`icon-btn ${showSnippets ? 'active' : ''}`} onClick={() => setShowSnippets((v) => !v)} title="Snippets">
             <Code2 size={16} />
           </button>
           {!tab.isLocal && (
             <>
+              <button
+                className={`icon-btn ${showTunnels ? 'active' : ''}`}
+                onClick={() => setShowTunnels((v) => !v)}
+                title="Port forwarding"
+              >
+                <Network size={16} />
+              </button>
               <button
                 className={`icon-btn ${tab.splitChannelId ? 'active' : ''}`}
                 onClick={() => tab.splitChannelId ? removeSplitPane(tab.id) : addSplitPane(tab.id)}
@@ -701,6 +750,15 @@ export default function TerminalTab({ tab, isActive }) {
         <SnippetPanel
           onInsert={(cmd) => { writeToChannel(cmd + '\r') }}
           onClose={() => setShowSnippets(false)}
+        />
+      )}
+
+      {/* Tunnel panel */}
+      {showTunnels && !tab.isLocal && connected && (
+        <TunnelPanel
+          channelId={tab.channelId}
+          sessionId={tab.sessionId || tab.channelId}
+          onClose={() => setShowTunnels(false)}
         />
       )}
 
@@ -877,10 +935,21 @@ export default function TerminalTab({ tab, isActive }) {
               cwd={cwd}
               width={sftpWidth}
               sessionKey={tab.config ? `${tab.config.host}:${tab.config.port || 22}` : tab.channelId}
+              onEditFile={handleEditFile}
             />
           </>
         )}
       </div>
+
+      {/* Remote file editor overlay */}
+      {editingFile && (
+        <FileEditor
+          editingFile={editingFile}
+          onSave={handleSaveFile}
+          onClose={handleCloseEditor}
+          onChange={(value) => setEditingFile((prev) => prev ? { ...prev, content: value } : null)}
+        />
+      )}
 
       {/* Context menu */}
       {ctxMenu && (

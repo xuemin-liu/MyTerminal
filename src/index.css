@@ -92,6 +92,28 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
   border-bottom: 1px solid var(--border);
 }
 .sidebar-title { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.sidebar-search input {
+  flex: 1;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  outline: none;
+  width: auto;
+}
+.sidebar-search input:focus { border-color: var(--accent); }
 .session-list { flex: 1; overflow-y: auto; padding: 4px 0; }
 .session-empty { padding: 20px 14px; color: var(--text-muted); font-size: 12px; }
 .session-item {
@@ -157,6 +179,8 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 }
 .tab:hover { background: rgba(255,255,255,0.04); color: var(--text); }
 .tab.active { background: var(--tab-active); color: var(--text); border-bottom: 2px solid var(--accent); }
+.tab.dragging { opacity: 0.4; }
+.tab.drag-over { box-shadow: inset 2px 0 0 var(--accent); }
 .tab-icon { flex-shrink: 0; }
 .tab-label { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tab-close {
@@ -646,6 +670,18 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
   flex-shrink: 0;
 }
 
+/* ── Latency badge ───────────────────────────────────────────────────────── */
+.latency-badge {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.latency-badge.good { color: var(--success); background: rgba(63,185,80,0.1); }
+.latency-badge.warn { color: #d29922; background: rgba(210,153,34,0.1); }
+.latency-badge.bad { color: var(--danger); background: rgba(248,81,73,0.1); }
+
 /* ── Reconnect badge ─────────────────────────────────────────────────────── */
 .reconnect-badge {
   display: flex;
@@ -740,6 +776,64 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 .snippet-cmd { flex: 1; font-size: 12px; font-family: "Cascadia Code", "Fira Code", monospace; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .snippet-empty { padding: 16px; text-align: center; font-size: 12px; color: var(--text-muted); font-style: italic; }
 
+/* ── Tunnel panel ────────────────────────────────────────────────────────── */
+.tunnel-panel {
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  flex-shrink: 0;
+}
+.tunnel-form {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  align-items: center;
+}
+.tunnel-form select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 4px 6px;
+  font-size: 12px;
+  width: auto;
+}
+.tunnel-form input {
+  height: 26px;
+  padding: 0 6px;
+  font-size: 12px;
+  width: 80px;
+}
+.tunnel-list { flex: 1; overflow-y: auto; }
+.tunnel-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(33,38,45,0.5);
+  font-size: 12px;
+}
+.tunnel-item:hover { background: rgba(255,255,255,0.03); }
+.tunnel-item.running { background: rgba(63,185,80,0.05); }
+.tunnel-desc {
+  flex: 1;
+  font-family: "Cascadia Code", "Fira Code", monospace;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tunnel-status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-muted); flex-shrink: 0;
+}
+.tunnel-status-dot.active { background: var(--success); }
+
 /* ── Tab context menu extras ─────────────────────────────────────────────── */
 .tab-ctx-menu { min-width: 200px; }
 .ctx-section { padding: 6px 8px; border-bottom: 1px solid var(--border); }
@@ -800,6 +894,50 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* ── Remote file editor ─────────────────────────────────────────────────── */
+.file-editor-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.file-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.file-editor-path {
+  font-size: 13px;
+  font-family: "Cascadia Code", "Fira Code", monospace;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.file-editor-modified { color: #d29922; font-style: italic; }
+.file-editor-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.file-editor-textarea {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  padding: 12px;
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  outline: none;
+  tab-size: 4;
 }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────────────── */

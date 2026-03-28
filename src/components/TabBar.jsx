@@ -6,12 +6,14 @@ import SessionDialog from './SessionDialog'
 const TAB_COLORS = ['#58a6ff', '#3fb950', '#d29922', '#ff7b72', '#bc8cff', '#39c5cf', '#f78166', null]
 
 export default function TabBar() {
-  const { tabs, activeTabId, setActiveTab, closeTab, updateTab, addSession, broadcastMode, toggleBroadcast, openLocalTab, openWslTab } = useSessionStore()
+  const { tabs, activeTabId, setActiveTab, closeTab, updateTab, addSession, broadcastMode, toggleBroadcast, openLocalTab, openWslTab, reorderTabs } = useSessionStore()
   const [quickConnect, setQuickConnect] = useState(false)
   const [tabMenu, setTabMenu] = useState(null)
   const [editLabel, setEditLabel] = useState('')
   const [wslDistros, setWslDistros] = useState([])
   const [wslMenuPos, setWslMenuPos] = useState(null)
+  const [dragIdx, setDragIdx] = useState(null)
+  const [dragOverIdx, setDragOverIdx] = useState(null)
   const menuRef = useRef(null)
   const wslMenuRef = useRef(null)
 
@@ -76,13 +78,18 @@ export default function TabBar() {
   return (
     <div className={`tabbar ${broadcastMode ? 'broadcasting' : ''}`}>
       <div className="tabbar-tabs">
-        {tabs.map((tab) => (
+        {tabs.map((tab, idx) => (
           <div
             key={tab.id}
-            className={`tab ${tab.id === activeTabId ? 'active' : ''}`}
+            className={`tab ${tab.id === activeTabId ? 'active' : ''}${dragIdx === idx ? ' dragging' : ''}${dragOverIdx === idx ? ' drag-over' : ''}`}
             onClick={() => setActiveTab(tab.id)}
             onContextMenu={(e) => openTabMenu(e, tab)}
             style={tab.color ? { borderBottom: `2px solid ${tab.color}` } : {}}
+            draggable
+            onDragStart={(e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = 'move' }}
+            onDragOver={(e) => { e.preventDefault(); setDragOverIdx(idx) }}
+            onDrop={(e) => { e.preventDefault(); if (dragIdx !== null && dragIdx !== idx) reorderTabs(dragIdx, idx); setDragIdx(null); setDragOverIdx(null) }}
+            onDragEnd={() => { setDragIdx(null); setDragOverIdx(null) }}
           >
             {tab.color && <span className="tab-color-dot" style={{ background: tab.color }} />}
             {tab.isLocal ? <Monitor size={13} className="tab-icon" /> : <Terminal size={13} className="tab-icon" />}

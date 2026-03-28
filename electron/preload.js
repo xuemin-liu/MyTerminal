@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     write: (channelId, data) => ipcRenderer.send('ssh:write', channelId, data),
     resize: (channelId, cols, rows) => ipcRenderer.send('ssh:resize', channelId, cols, rows),
     disconnect: (channelId) => ipcRenderer.invoke('ssh:disconnect', channelId),
+    ping: (channelId) => ipcRenderer.invoke('ssh:ping', channelId),
     onData: (callback) => {
       const handler = (_event, channelId, data) => callback(channelId, data)
       ipcRenderer.on('ssh:data', handler)
@@ -39,6 +40,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (channelId, path) => ipcRenderer.invoke('sftp:delete', channelId, path),
     mkdir: (channelId, path) => ipcRenderer.invoke('sftp:mkdir', channelId, path),
     realpath: (channelId, path) => ipcRenderer.invoke('sftp:realpath', channelId, path),
+    readFile: (channelId, remotePath) => ipcRenderer.invoke('sftp:readFile', channelId, remotePath),
+    writeFile: (channelId, remotePath, content) => ipcRenderer.invoke('sftp:writeFile', channelId, remotePath, content),
   },
   sessions: {
     getAll: () => ipcRenderer.invoke('sessions:getAll'),
@@ -63,6 +66,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAll: () => ipcRenderer.invoke('filterPresets:getAll'),
     save: (preset) => ipcRenderer.invoke('filterPresets:save', preset),
     delete: (id) => ipcRenderer.invoke('filterPresets:delete', id),
+  },
+  tunnel: {
+    start: (channelId, tunnelId, config) => ipcRenderer.invoke('tunnel:start', channelId, tunnelId, config),
+    stop: (tunnelId) => ipcRenderer.invoke('tunnel:stop', tunnelId),
+    stopByChannel: (channelId) => ipcRenderer.invoke('tunnel:stopByChannel', channelId),
+    list: () => ipcRenderer.invoke('tunnel:list'),
+    getConfigs: (sessionId) => ipcRenderer.invoke('tunnelConfigs:get', sessionId),
+    setConfigs: (sessionId, configs) => ipcRenderer.invoke('tunnelConfigs:set', sessionId, configs),
+  },
+  logging: {
+    start: (channelId, logDir) => ipcRenderer.invoke('logging:start', channelId, logDir),
+    write: (channelId, data) => ipcRenderer.send('logging:write', channelId, data),
+    stop: (channelId) => ipcRenderer.invoke('logging:stop', channelId),
+    export: (content) => ipcRenderer.invoke('logging:export', content),
+  },
+  sshconfig: {
+    import: () => ipcRenderer.invoke('sshconfig:import'),
+  },
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    set: (settings) => ipcRenderer.invoke('settings:set', settings),
+  },
+  workspace: {
+    get: () => ipcRenderer.invoke('workspace:get'),
+    set: (workspace) => ipcRenderer.invoke('workspace:set', workspace),
   },
   dialog: {
     openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),

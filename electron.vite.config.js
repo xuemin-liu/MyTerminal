@@ -11,6 +11,10 @@ export default defineConfig({
           main: resolve(__dirname, 'electron/main.js'),
           'ssh-manager': resolve(__dirname, 'electron/ssh-manager.js'),
           'local-terminal': resolve(__dirname, 'electron/local-terminal.js'),
+          'tunnel-manager': resolve(__dirname, 'electron/tunnel-manager.js'),
+          'ipc/sessions': resolve(__dirname, 'electron/ipc/sessions.js'),
+          'ipc/logging': resolve(__dirname, 'electron/ipc/logging.js'),
+          'ipc/tunnels': resolve(__dirname, 'electron/ipc/tunnels.js'),
         },
         output: {
           entryFileNames: '[name].js',

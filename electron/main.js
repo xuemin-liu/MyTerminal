@@ -5,8 +5,31 @@ const Store = require('electron-store')
 const Anthropic = require('@anthropic-ai/sdk').default
 const sshManager = require('./ssh-manager')
 const localTerminalManager = require('./local-terminal')
+const tunnelManager = require('./tunnel-manager')
+const registerSessionHandlers = require('./ipc/sessions')
+const registerLoggingHandlers = require('./ipc/logging')
+const registerTunnelHandlers = require('./ipc/tunnels')
 
 const store = new Store({ name: 'sessions' })
+
+// ── IPC input validation ──────────────────────────────────────────────────────
+
+function assertString(val, name) {
+  if (typeof val !== 'string') throw new TypeError(`${name} must be a string, got ${typeof val}`)
+}
+
+function assertOptString(val, name) {
+  if (val != null && typeof val !== 'string') throw new TypeError(`${name} must be a string or null, got ${typeof val}`)
+}
+
+function assertInt(val, name, { min = -Infinity, max = Infinity } = {}) {
+  if (!Number.isInteger(val)) throw new TypeError(`${name} must be an integer, got ${typeof val}`)
+  if (val < min || val > max) throw new RangeError(`${name} out of range [${min}, ${max}]: ${val}`)
+}
+
+function assertPlainObject(val, name) {
+  if (!val || typeof val !== 'object' || Array.isArray(val)) throw new TypeError(`${name} must be a plain object`)
+}
 
 // ── Credential encryption (safeStorage / OS keychain) ──────────────────────────
 const SENSITIVE_FIELDS = ['password', 'passphrase', 'jumpPassword', 'jumpPassphrase']
@@ -55,12 +78,13 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   })
 
   sshManager.setWindow(mainWindow)
   localTerminalManager.setWindow(mainWindow)
+  tunnelManager.setWindow(mainWindow)
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -72,6 +96,7 @@ function createWindow() {
   mainWindow.on('closed', () => {
     sshManager.disconnectAll()
     localTerminalManager.disconnectAll()
+    tunnelManager.stopAll()
     mainWindow = null
   })
 }
@@ -86,18 +111,39 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   sshManager.disconnectAll()
   localTerminalManager.disconnectAll()
+  tunnelManager.stopAll()
   if (process.platform !== 'darwin') app.quit()
 })
 
 // ── SSH IPC ────────────────────────────────────────────────────────────────────
 
 ipcMain.handle('ssh:connect', async (_event, channelId, config) => {
-  try { return await sshManager.connect(channelId, config) }
-  catch (err) { return { error: err.message } }
+  try {
+    assertString(channelId, 'channelId')
+    assertPlainObject(config, 'config')
+    assertString(config.host, 'config.host')
+    assertString(config.username, 'config.username')
+    return await sshManager.connect(channelId, config)
+  } catch (err) { return { error: err.message } }
 })
-ipcMain.on('ssh:write', (_event, channelId, data) => sshManager.write(channelId, data))
-ipcMain.on('ssh:resize', (_event, channelId, cols, rows) => sshManager.resize(channelId, cols, rows))
-ipcMain.handle('ssh:disconnect', (_event, channelId) => sshManager.disconnect(channelId))
+ipcMain.on('ssh:write', (_event, channelId, data) => {
+  if (typeof channelId !== 'string' || typeof data !== 'string') return
+  sshManager.write(channelId, data)
+})
+ipcMain.on('ssh:resize', (_event, channelId, cols, rows) => {
+  if (typeof channelId !== 'string') return
+  if (!Number.isInteger(cols) || !Number.isInteger(rows)) return
+  if (cols < 1 || cols > 1000 || rows < 1 || rows > 500) return
+  sshManager.resize(channelId, cols, rows)
+})
+ipcMain.handle('ssh:disconnect', (_event, channelId) => {
+  tunnelManager.stopByChannel(channelId)
+  sshManager.disconnect(channelId)
+})
+ipcMain.handle('ssh:ping', async (_event, channelId) => {
+  try { return await sshManager.ping(channelId) }
+  catch { return -1 }
+})
 
 // ── Local terminal IPC ─────────────────────────────────────────────────────────
 
@@ -105,8 +151,16 @@ ipcMain.handle('local:spawn', async (_event, channelId, options) => {
   try { return await localTerminalManager.spawn(channelId, options) }
   catch (err) { return { error: err.message } }
 })
-ipcMain.on('local:write', (_event, channelId, data) => localTerminalManager.write(channelId, data))
-ipcMain.on('local:resize', (_event, channelId, cols, rows) => localTerminalManager.resize(channelId, cols, rows))
+ipcMain.on('local:write', (_event, channelId, data) => {
+  if (typeof channelId !== 'string' || typeof data !== 'string') return
+  localTerminalManager.write(channelId, data)
+})
+ipcMain.on('local:resize', (_event, channelId, cols, rows) => {
+  if (typeof channelId !== 'string') return
+  if (!Number.isInteger(cols) || !Number.isInteger(rows)) return
+  if (cols < 1 || cols > 1000 || rows < 1 || rows > 500) return
+  localTerminalManager.resize(channelId, cols, rows)
+})
 ipcMain.handle('local:disconnect', (_event, channelId) => localTerminalManager.disconnect(channelId))
 
 // ── SFTP IPC ───────────────────────────────────────────────────────────────────
@@ -140,6 +194,22 @@ ipcMain.handle('sftp:realpath', async (_event, channelId, remotePath) => {
   catch (err) { return { error: err.message } }
 })
 
+ipcMain.handle('sftp:readFile', async (_event, channelId, remotePath) => {
+  try {
+    assertString(channelId, 'channelId')
+    assertString(remotePath, 'remotePath')
+    return await sshManager.sftpReadFile(channelId, remotePath)
+  } catch (err) { return { error: err.message } }
+})
+ipcMain.handle('sftp:writeFile', async (_event, channelId, remotePath, content) => {
+  try {
+    assertString(channelId, 'channelId')
+    assertString(remotePath, 'remotePath')
+    assertString(content, 'content')
+    return await sshManager.sftpWriteFile(channelId, remotePath, content)
+  } catch (err) { return { error: err.message } }
+})
+
 // ── File dialog ────────────────────────────────────────────────────────────────
 
 ipcMain.handle('dialog:openFile', async (_event, options) => {
@@ -149,65 +219,57 @@ ipcMain.handle('dialog:saveFile', async (_event, options) => {
   return await dialog.showSaveDialog(mainWindow, options || {})
 })
 
-// ── Session persistence ────────────────────────────────────────────────────────
+// ── Extracted IPC handler groups ──────────────────────────────────────────────
 
-ipcMain.handle('sessions:getAll', () => store.get('sessions', []).map(decryptSession))
+const getMainWindow = () => mainWindow
 
-ipcMain.handle('sessions:save', (_event, session) => {
-  const sessions = store.get('sessions', [])
-  const idx = sessions.findIndex((x) => x.id === session.id)
-  const encrypted = encryptSession(session)
-  if (idx >= 0) sessions[idx] = encrypted
-  else sessions.push(encrypted)
-  store.set('sessions', sessions)
-  return sessions.map(decryptSession)
+registerSessionHandlers(store, { encryptSession, decryptSession, SENSITIVE_FIELDS, getMainWindow })
+registerTunnelHandlers(store, { sshManager, tunnelManager, assertString, assertPlainObject })
+registerLoggingHandlers({ getMainWindow })
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+const DEFAULT_SETTINGS = {
+  defaultFontSize: 14,
+  defaultScrollback: 10000,
+  colorizeByDefault: true,
+  keepaliveInterval: 10000,
+  loggingEnabled: false,
+  logDirectory: '',
+}
+
+ipcMain.handle('settings:get', () => {
+  return { ...DEFAULT_SETTINGS, ...store.get('settings-prefs', {}) }
 })
 
-ipcMain.handle('sessions:delete', (_event, id) => {
-  const sessions = store.get('sessions', []).filter((x) => x.id !== id)
-  store.set('sessions', sessions)
-  return sessions.map(decryptSession)
-})
-
-ipcMain.handle('sessions:export', async (_event, _sessions) => {
-  const result = await dialog.showSaveDialog(mainWindow, {
-    title: 'Export Sessions',
-    defaultPath: 'myterminal-sessions.json',
-    filters: [{ name: 'JSON', extensions: ['json'] }],
-  })
-  if (result.canceled) return { canceled: true }
-  // Export metadata only — passwords are machine-specific and cannot be decrypted on another device
-  const exportable = store.get('sessions', []).map((s) => {
-    const clean = decryptSession(s)
-    for (const field of SENSITIVE_FIELDS) delete clean[field]
-    return clean
-  })
-  fs.writeFileSync(result.filePath, JSON.stringify(exportable, null, 2), 'utf8')
-  return { success: true }
-})
-
-ipcMain.handle('sessions:import', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Import Sessions',
-    filters: [{ name: 'JSON', extensions: ['json'] }],
-    properties: ['openFile'],
-  })
-  if (result.canceled) return { canceled: true }
-  try {
-    const raw = fs.readFileSync(result.filePaths[0], 'utf8')
-    const imported = JSON.parse(raw)
-    if (!Array.isArray(imported)) return { error: 'Invalid file format' }
-    const existing = store.get('sessions', [])
-    const map = new Map(existing.map((s) => [s.id, s]))
-    for (const s of imported) {
-      if (s.id && s.host && s.username) map.set(s.id, encryptSession(s))
-    }
-    const merged = Array.from(map.values())
-    store.set('sessions', merged)
-    return merged.map(decryptSession)
-  } catch (e) {
-    return { error: e.message }
+ipcMain.handle('settings:set', (_event, newSettings) => {
+  if (!newSettings || typeof newSettings !== 'object' || Array.isArray(newSettings)) {
+    return { ...DEFAULT_SETTINGS, ...store.get('settings-prefs', {}) }
   }
+  // Only allow known keys to be written
+  const allowed = Object.keys(DEFAULT_SETTINGS)
+  const sanitized = {}
+  for (const key of allowed) {
+    if (key in newSettings) sanitized[key] = newSettings[key]
+  }
+  const current = { ...DEFAULT_SETTINGS, ...store.get('settings-prefs', {}) }
+  const merged = { ...current, ...sanitized }
+  store.set('settings-prefs', merged)
+  return merged
+})
+
+// ── Workspace persistence ─────────────────────────────────────────────────────
+
+ipcMain.handle('workspace:get', () => {
+  return store.get('workspace', null)
+})
+
+ipcMain.handle('workspace:set', (_event, workspace) => {
+  if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) {
+    store.delete('workspace')
+    return
+  }
+  store.set('workspace', workspace)
 })
 
 // ── WSL ────────────────────────────────────────────────────────────────────────
