@@ -109,5 +109,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notify: {
     send: (title, body) => ipcRenderer.invoke('notify:send', title, body),
   },
+  clipboard: {
+    writeText: (text) => ipcRenderer.invoke('clipboard:writeText', text),
+  },
   platform: process.platform,
 })

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
   Folder, File, ChevronUp, ArrowLeft, ArrowRight, RefreshCw, Upload, Download,
-  FolderPlus, Trash2, Edit2, Home, Star, X,
+  FolderPlus, Trash2, Edit2, Home, Star, X, Copy, ClipboardCopy, FolderOpen,
+  FileEdit, FileDown, Scissors,
 } from 'lucide-react'
 
 
@@ -30,6 +31,8 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   const [sftpHome, setSftpHome] = useState(null)
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
+  const [ctxMenu, setCtxMenu] = useState(null)
+  const ctxMenuRef = useRef(null)
   const pathRef = useRef('/')
   const dropRef = useRef(null)
   const navHistoryRef = useRef([])
@@ -216,6 +219,101 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
     loadDir(path)
   }
 
+  // ── Context menu ────────────────────────────────────────────────────────────
+
+  const handleContextMenu = (e, item) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSelected(item)
+    const x = Math.min(e.clientX, window.innerWidth - 200)
+    const y = Math.min(e.clientY, window.innerHeight - 300)
+    setCtxMenu({ x, y, item })
+  }
+
+  const handleBgContextMenu = (e) => {
+    e.preventDefault()
+    const x = Math.min(e.clientX, window.innerWidth - 200)
+    const y = Math.min(e.clientY, window.innerHeight - 300)
+    setCtxMenu({ x, y, item: null })
+  }
+
+  const closeCtxMenu = () => setCtxMenu(null)
+
+  useEffect(() => {
+    if (!ctxMenu) return
+    const onClickOutside = (e) => {
+      if (ctxMenuRef.current && !ctxMenuRef.current.contains(e.target)) closeCtxMenu()
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [ctxMenu])
+
+  const ctxCopyPath = () => {
+    if (!ctxMenu?.item) return
+    const fullPath = joinPath(path, ctxMenu.item.name)
+    window.electronAPI.clipboard.writeText(fullPath)
+    closeCtxMenu()
+  }
+
+  const ctxCopyName = () => {
+    if (!ctxMenu?.item) return
+    window.electronAPI.clipboard.writeText(ctxMenu.item.name)
+    closeCtxMenu()
+  }
+
+  const ctxOpen = () => {
+    if (!ctxMenu?.item) return
+    navigate(ctxMenu.item)
+    closeCtxMenu()
+  }
+
+  const ctxDownload = async () => {
+    if (!ctxMenu?.item || ctxMenu.item.type === 'd') return
+    const result = await window.electronAPI.dialog.saveFile({ defaultPath: ctxMenu.item.name })
+    if (result.canceled) { closeCtxMenu(); return }
+    const res = await window.electronAPI.sftp.download(channelId, joinPath(path, ctxMenu.item.name), result.filePath)
+    if (res?.error) setError(res.error)
+    closeCtxMenu()
+  }
+
+  const ctxRename = () => {
+    if (!ctxMenu?.item) return
+    setSelected(ctxMenu.item)
+    setRenaming(ctxMenu.item)
+    setRenameValue(ctxMenu.item.name)
+    closeCtxMenu()
+  }
+
+  const ctxDelete = async () => {
+    if (!ctxMenu?.item) return
+    if (!confirm(`Delete "${ctxMenu.item.name}"?`)) { closeCtxMenu(); return }
+    const res = await window.electronAPI.sftp.delete(channelId, joinPath(path, ctxMenu.item.name))
+    if (res?.error) { setError(res.error); closeCtxMenu(); return }
+    setSelected(null)
+    loadDir(path)
+    closeCtxMenu()
+  }
+
+  const ctxNewFolder = async () => {
+    closeCtxMenu()
+    handleMkdir()
+  }
+
+  const ctxUpload = async () => {
+    closeCtxMenu()
+    handleUpload()
+  }
+
+  const ctxRefresh = () => {
+    closeCtxMenu()
+    loadDir(path)
+  }
+
+  const ctxCopyDirPath = () => {
+    window.electronAPI.clipboard.writeText(path)
+    closeCtxMenu()
+  }
+
   return (
     <div className="sftp-panel" ref={dropRef} onDrop={handleDrop} onDragOver={e => e.preventDefault()}
       style={width ? { width } : undefined}>
@@ -264,7 +362,7 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
       {loading ? (
         <div className="sftp-loading">Loading...</div>
       ) : (
-        <div className="sftp-list">
+        <div className="sftp-list" onContextMenu={handleBgContextMenu}>
           <table>
             <thead>
               <tr><th>Name</th><th>Size</th><th>Modified</th></tr>
@@ -284,6 +382,7 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
                   className={selected?.name === item.name ? 'selected' : ''}
                   onClick={() => setSelected(item)}
                   onDoubleClick={() => navigate(item)}
+                  onContextMenu={(e) => handleContextMenu(e, item)}
                 >
                   <td>
                     <span className="sftp-file-icon">
@@ -306,6 +405,37 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <div ref={ctxMenuRef} className="context-menu" style={{ top: ctxMenu.y, left: ctxMenu.x }}>
+          {ctxMenu.item ? (
+            <>
+              <button onClick={ctxOpen}>
+                {ctxMenu.item.type === 'd' ? <FolderOpen size={14} /> : <FileEdit size={14} />}
+                {ctxMenu.item.type === 'd' ? 'Open' : 'Edit'}
+              </button>
+              {ctxMenu.item.type === 'f' && (
+                <button onClick={ctxDownload}><FileDown size={14} /> Download</button>
+              )}
+              <div className="context-menu-sep" />
+              <button onClick={ctxCopyPath}><ClipboardCopy size={14} /> Copy Path</button>
+              <button onClick={ctxCopyName}><Copy size={14} /> Copy Name</button>
+              <div className="context-menu-sep" />
+              <button onClick={ctxRename}><Edit2 size={14} /> Rename</button>
+              <button className="danger" onClick={ctxDelete}><Trash2 size={14} /> Delete</button>
+            </>
+          ) : (
+            <>
+              <button onClick={ctxCopyDirPath}><ClipboardCopy size={14} /> Copy Directory Path</button>
+              <div className="context-menu-sep" />
+              <button onClick={ctxNewFolder}><FolderPlus size={14} /> New Folder</button>
+              <button onClick={ctxUpload}><Upload size={14} /> Upload</button>
+              <button onClick={ctxRefresh}><RefreshCw size={14} /> Refresh</button>
+            </>
+          )}
         </div>
       )}
     </div>

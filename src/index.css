@@ -484,6 +484,7 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 .context-menu button:hover { background: rgba(255,255,255,0.06); }
 .context-menu button.danger:hover { color: var(--danger); }
 .context-menu button:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.context-menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
 
 /* ── Session dialog ─────────────────────────────────────────────────────────── */
 .dialog-overlay {

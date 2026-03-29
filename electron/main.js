@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Notification, safeStorage } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Notification, safeStorage, clipboard } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const Store = require('electron-store')
@@ -348,6 +348,13 @@ ipcMain.handle('notify:send', (_event, title, body) => {
   if (Notification.isSupported()) {
     new Notification({ title, body, silent: false }).show()
   }
+})
+
+// ── Clipboard ─────────────────────────────────────────────────────────────────
+
+ipcMain.handle('clipboard:writeText', (_event, text) => {
+  if (typeof text !== 'string') return
+  clipboard.writeText(text)
 })
 
 // ── Window controls ────────────────────────────────────────────────────────────
