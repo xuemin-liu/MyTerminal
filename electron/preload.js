@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   ssh: {
@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sftp:download', channelId, remotePath, localPath),
     upload: (channelId, localPath, remotePath) =>
       ipcRenderer.invoke('sftp:upload', channelId, localPath, remotePath),
+    uploadDir: (channelId, localDir, remoteDir) =>
+      ipcRenderer.invoke('sftp:uploadDir', channelId, localDir, remoteDir),
     rename: (channelId, oldPath, newPath) =>
       ipcRenderer.invoke('sftp:rename', channelId, oldPath, newPath),
     delete: (channelId, path) => ipcRenderer.invoke('sftp:delete', channelId, path),
@@ -109,8 +111,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notify: {
     send: (title, body) => ipcRenderer.invoke('notify:send', title, body),
   },
+  fs: {
+    isDirectory: (filePath) => ipcRenderer.invoke('fs:isDirectory', filePath),
+  },
   clipboard: {
     writeText: (text) => ipcRenderer.invoke('clipboard:writeText', text),
   },
+  // webUtils.getPathForFile needs the real File object which can't cross the
+  // context-isolation bridge.  The preload captures drop events (same DOM,
+  // different JS world) and stashes the resolved paths.  The renderer calls
+  // getDropPaths() right after the drop event to retrieve them.
+  getDropPaths: () => {
+    const paths = _lastDropPaths.slice()
+    _lastDropPaths.length = 0
+    return paths
+  },
   platform: process.platform,
 })
+
+const _lastDropPaths = []
+
+window.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('drop', (e) => {
+    _lastDropPaths.length = 0
+    if (!e.dataTransfer?.files?.length) return
+    for (const file of e.dataTransfer.files) {
+      try { _lastDropPaths.push(webUtils.getPathForFile(file)) }
+      catch { /* skip */ }
+    }
+  }, true)  // capture phase — runs before React's handler
+})
+

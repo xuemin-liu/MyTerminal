@@ -454,6 +454,12 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
 }
+.sftp-list th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.sftp-list th.sortable:hover { color: var(--text); }
+.sftp-list th.sortable svg { vertical-align: middle; margin-left: 2px; }
 .sftp-list td { padding: 5px 10px; font-size: 12px; border-bottom: 1px solid rgba(33,38,45,0.5); white-space: nowrap; }
 .sftp-list tr:hover td { background: rgba(255,255,255,0.03); }
 .sftp-list tr.selected td { background: rgba(31,111,235,0.12); }

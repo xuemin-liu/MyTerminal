@@ -177,6 +177,10 @@ ipcMain.handle('sftp:upload', async (_event, channelId, localPath, remotePath) =
   try { return await sshManager.sftpUpload(channelId, localPath, remotePath) }
   catch (err) { return { error: err.message } }
 })
+ipcMain.handle('sftp:uploadDir', async (_event, channelId, localDir, remoteDir) => {
+  try { return await sshManager.sftpUploadDir(channelId, localDir, remoteDir) }
+  catch (err) { return { error: err.message } }
+})
 ipcMain.handle('sftp:rename', async (_event, channelId, oldPath, newPath) => {
   try { return await sshManager.sftpRename(channelId, oldPath, newPath) }
   catch (err) { return { error: err.message } }
@@ -348,6 +352,13 @@ ipcMain.handle('notify:send', (_event, title, body) => {
   if (Notification.isSupported()) {
     new Notification({ title, body, silent: false }).show()
   }
+})
+
+// ── File system helpers ───────────────────────────────────────────────────────
+
+ipcMain.handle('fs:isDirectory', (_event, filePath) => {
+  try { return fs.statSync(filePath).isDirectory() }
+  catch { return false }
 })
 
 // ── Clipboard ─────────────────────────────────────────────────────────────────

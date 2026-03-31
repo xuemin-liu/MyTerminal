@@ -224,6 +224,25 @@ class SshManager {
     })
   }
 
+  async sftpUploadDir(channelId, localDir, remoteDir) {
+    const sftp = await this._getSftp(channelId)
+    // Create remote directory (ignore "already exists" errors)
+    await new Promise((resolve) => {
+      sftp.mkdir(remoteDir, (err) => resolve())
+    })
+    const entries = fs.readdirSync(localDir, { withFileTypes: true })
+    for (const entry of entries) {
+      const localChild = require('path').join(localDir, entry.name)
+      const remoteChild = remoteDir + '/' + entry.name
+      if (entry.isDirectory()) {
+        await this.sftpUploadDir(channelId, localChild, remoteChild)
+      } else {
+        await this.sftpUpload(channelId, localChild, remoteChild)
+      }
+    }
+    return { success: true }
+  }
+
   async sftpRename(channelId, oldPath, newPath) {
     const sftp = await this._getSftp(channelId)
     return new Promise((resolve, reject) => {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import {
   Folder, File, ChevronUp, ArrowLeft, ArrowRight, RefreshCw, Upload, Download,
   FolderPlus, Trash2, Edit2, Home, Star, X, Copy, ClipboardCopy, FolderOpen,
-  FileEdit, FileDown, Scissors,
+  FileEdit, FileDown, Scissors, ArrowUpDown, ArrowUp as SortAsc, ArrowDown as SortDesc,
 } from 'lucide-react'
 
 
@@ -31,6 +31,8 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   const [sftpHome, setSftpHome] = useState(null)
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
+  const [sortKey, setSortKey] = useState('name')  // 'name' | 'size' | 'mtime'
+  const [sortAsc, setSortAsc] = useState(true)
   const [ctxMenu, setCtxMenu] = useState(null)
   const ctxMenuRef = useRef(null)
   const pathRef = useRef('/')
@@ -207,16 +209,45 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
 
   const handleDrop = async (e) => {
     e.preventDefault()
+    // The preload capture-phase listener has already resolved the native file
+    // paths via webUtils.getPathForFile and stashed them.  Retrieve them now.
+    const localPaths = window.electronAPI.getDropPaths()
+    if (!localPaths.length) return
     const errors = []
-    for (const file of Array.from(e.dataTransfer.files)) {
-      const localPath = file.path
+    for (const localPath of localPaths) {
       if (!localPath) continue
       const name = localPath.replace(/\\/g, '/').split('/').pop()
-      const res = await window.electronAPI.sftp.upload(channelId, localPath, joinPath(path, name))
+      const isDir = await window.electronAPI.fs.isDirectory(localPath)
+      const remoteDest = joinPath(path, name)
+      const res = isDir
+        ? await window.electronAPI.sftp.uploadDir(channelId, localPath, remoteDest)
+        : await window.electronAPI.sftp.upload(channelId, localPath, remoteDest)
       if (res?.error) errors.push(`${name}: ${res.error}`)
     }
     if (errors.length) setError(errors.join('\n'))
     loadDir(path)
+  }
+
+  // ── Sorting ─────────────────────────────────────────────────────────────────
+
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortAsc(!sortAsc)
+    else { setSortKey(key); setSortAsc(true) }
+  }
+
+  const sortedItems = [...items].sort((a, b) => {
+    // Folders always before files
+    if (a.type !== b.type) return a.type === 'd' ? -1 : 1
+    let cmp = 0
+    if (sortKey === 'name') cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    else if (sortKey === 'size') cmp = (a.size || 0) - (b.size || 0)
+    else if (sortKey === 'mtime') cmp = (a.mtime || 0) - (b.mtime || 0)
+    return sortAsc ? cmp : -cmp
+  })
+
+  const SortIcon = ({ col }) => {
+    if (sortKey !== col) return null
+    return sortAsc ? <SortAsc size={11} /> : <SortDesc size={11} />
   }
 
   // ── Context menu ────────────────────────────────────────────────────────────
@@ -365,7 +396,11 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
         <div className="sftp-list" onContextMenu={handleBgContextMenu}>
           <table>
             <thead>
-              <tr><th>Name</th><th>Size</th><th>Modified</th></tr>
+              <tr>
+                <th className="sortable" onClick={() => toggleSort('name')}>Name <SortIcon col="name" /></th>
+                <th className="sortable" onClick={() => toggleSort('size')}>Size <SortIcon col="size" /></th>
+                <th className="sortable" onClick={() => toggleSort('mtime')}>Modified <SortIcon col="mtime" /></th>
+              </tr>
             </thead>
             <tbody>
               {path !== '/' && (
@@ -376,7 +411,7 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
                   </td>
                 </tr>
               )}
-              {items.map(item => (
+              {sortedItems.map(item => (
                 <tr
                   key={item.name}
                   className={selected?.name === item.name ? 'selected' : ''}
