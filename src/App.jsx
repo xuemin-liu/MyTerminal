@@ -29,15 +29,18 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              tabs.map((tab) => (
-                <div
-                  key={tab.id}
-                  className="tab-pane"
-                  style={{ display: tab.id === activeTabId ? 'flex' : 'none' }}
-                >
-                  <TerminalTab tab={tab} isActive={tab.id === activeTabId} />
-                </div>
-              ))
+              tabs.map((tab) => {
+                const active = tab.id === activeTabId
+                return (
+                  <div
+                    key={tab.id}
+                    className={`tab-pane ${active ? 'active' : 'inactive'}`}
+                    aria-hidden={!active}
+                  >
+                    <TerminalTab tab={tab} isActive={active} />
+                  </div>
+                )
+              })
             )}
           </div>
         </div>

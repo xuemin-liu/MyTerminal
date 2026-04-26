@@ -528,8 +528,12 @@ export default function TerminalTab({ tab, isActive }) {
       }
     })
 
-    const resizeObs = new ResizeObserver(() => {
+    const resizeObs = new ResizeObserver((entries) => {
       try {
+        // Skip fitting when the container is not measurable
+        // to prevent xterm from reflowing content to a tiny column count.
+        const { width, height } = entries[0].contentRect
+        if (width === 0 || height === 0) return
         fitAddon.fit()
         const { cols, rows } = term
         if (tab.isLocal) window.electronAPI.local.resize(tab.channelId, cols, rows)
@@ -559,10 +563,24 @@ export default function TerminalTab({ tab, isActive }) {
     return () => cleanupRef.current.forEach((fn) => { try { fn() } catch (_) {} })
   }, [tab.channelId])
 
-  // Refit when panels toggle
+  // Refit when tab becomes active or panels toggle
   useEffect(() => {
-    setTimeout(() => { try { fitAddonRef.current?.fit() } catch (_) {} }, 100)
-  }, [showSftp, showSnippets, showTunnels])
+    if (!isActive) return
+    // Use rAF to wait for the browser to complete layout after tab/panel changes,
+    // then fit the terminal and notify the PTY of the new size.
+    const rafId = window.requestAnimationFrame(() => {
+      try {
+        fitAddonRef.current?.fit()
+        const term = terminalInstanceRef.current
+        if (term) {
+          const { cols, rows } = term
+          if (tab.isLocal) window.electronAPI.local.resize(tab.channelId, cols, rows)
+          else window.electronAPI.ssh.resize(tab.channelId, cols, rows)
+        }
+      } catch (_) {}
+    })
+    return () => window.cancelAnimationFrame(rafId)
+  }, [isActive, showSftp, showSnippets, showTunnels])
 
   const doSearch = (direction = 'next') => {
     if (!searchQuery) return
