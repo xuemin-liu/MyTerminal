@@ -39,12 +39,15 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   const dropRef = useRef(null)
   const navHistoryRef = useRef([])
   const historyIdxRef = useRef(-1)
+  const loadRequestRef = useRef(0)
 
   const loadDir = async (dir, cdTerminal = false, skipHistory = false) => {
+    const requestId = ++loadRequestRef.current
     setLoading(true)
     setError(null)
     setSelected(null)
     const result = await window.electronAPI.sftp.list(channelId, dir)
+    if (requestId !== loadRequestRef.current) return
     setLoading(false)
     if (result?.error) { setError(result.error); return }
     setItems(result)

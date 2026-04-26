@@ -77,6 +77,8 @@ export default function TerminalTab({ tab, isActive }) {
   const lastBellRef = useRef(0)
   const stickyCmdRef = useRef(null)
   const loggingRef = useRef(false)
+  const cwdRawBufferRef = useRef('')
+  const cwdPlainBufferRef = useRef('')
 
   // Sync refs
   useEffect(() => { colorizeRef.current = colorize }, [colorize])
@@ -496,12 +498,16 @@ export default function TerminalTab({ tab, isActive }) {
 
       // CWD detection — prefer OSC 7 (shell integration), fall back to prompt regex
       // Enable in shell: printf '\e]7;file://%s%s\a' "$HOSTNAME" "$PWD"  (bash/zsh)
-      const osc7 = data.match(/\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)(?:\x07|\x1b\\)/)
+      cwdRawBufferRef.current = (cwdRawBufferRef.current + data).slice(-4096)
+      cwdPlainBufferRef.current = (cwdPlainBufferRef.current + plain).slice(-4096)
+      const osc7 = cwdRawBufferRef.current.match(/\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)(?:\x07|\x1b\\)/)
       if (osc7) {
-        const detected = decodeURIComponent(osc7[1])
-        if (detected) { clearTimeout(cwdTimer); cwdTimer = setTimeout(() => setCwd(detected), 300) }
+        try {
+          const detected = decodeURIComponent(osc7[1])
+          if (detected) { clearTimeout(cwdTimer); cwdTimer = setTimeout(() => setCwd(detected), 300) }
+        } catch (_) {}
       } else {
-        const m = plain.match(/(?:^|\r?\n|\r)[^\r\n]*[: ]([~/][^\r\n $#>]*?)\s*[$#>]\s*$/)
+        const m = cwdPlainBufferRef.current.match(/(?:^|\r?\n|\r)[^\r\n]*[: ]([~/][^\r\n $#>]*?)\s*[$#>]\s*$/)
         if (m) {
           const detected = m[1].trim()
           if (detected) { clearTimeout(cwdTimer); cwdTimer = setTimeout(() => setCwd(detected), 300) }

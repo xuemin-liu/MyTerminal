@@ -1,5 +1,13 @@
 import { create } from 'zustand'
 
+const SENSITIVE_CONFIG_FIELDS = ['password', 'passphrase', 'jumpPassword', 'jumpPassphrase']
+
+function stripSensitiveConfig(config) {
+  if (!config || typeof config !== 'object') return config
+  const safeConfig = { ...config }
+  for (const field of SENSITIVE_CONFIG_FIELDS) delete safeConfig[field]
+  return safeConfig
+}
 
 const useSessionStore = create((set, get) => ({
   sessions: [],
@@ -22,7 +30,7 @@ const useSessionStore = create((set, get) => ({
     const { tabs, activeTabId } = get()
     // Only persist the serializable tab descriptors (no live state)
     const serializedTabs = tabs.map(({ id, sessionId, label, config, channelId, color, isLocal, wslDistro }) => ({
-      id, sessionId, label, config, channelId, color, isLocal, wslDistro,
+      id, sessionId, label, config: stripSensitiveConfig(config), channelId, color, isLocal, wslDistro,
     }))
     window.electronAPI.workspace.set({ tabs: serializedTabs, activeTabId })
   },
@@ -30,9 +38,13 @@ const useSessionStore = create((set, get) => ({
   loadWorkspace: async () => {
     const ws = await window.electronAPI.workspace.get()
     if (!ws || !Array.isArray(ws.tabs) || ws.tabs.length === 0) return
+    const { sessions } = get()
     // Restore tabs with full shape (fill in defaults for split pane fields)
     const tabs = ws.tabs.map((t) => ({
       ...t,
+      config: t.sessionId
+        ? (sessions.find((s) => s.id === t.sessionId) || stripSensitiveConfig(t.config))
+        : stripSensitiveConfig(t.config),
       splitChannelId: null,
       splitConfig: null,
     }))
