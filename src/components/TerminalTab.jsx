@@ -17,6 +17,8 @@ import TunnelPanel from './TunnelPanel'
 import FileEditor from './FileEditor'
 import useSessionStore from '../store/useSessionStore'
 import { FILTER_PRESETS, parseFilter, matchesFilter, colorizeOutput, stripAnsi } from '../utils/terminalUtils'
+import { appendOutputLines, updateCwdDetection } from '../utils/terminalSessionUtils'
+import { resizeTerminalChannel, writeToBroadcastTargets, writeToTerminalChannel } from '../utils/terminalChannels'
 
 export default function TerminalTab({ tab, isActive }) {
   const { addSplitPane, removeSplitPane, settings } = useSessionStore()
@@ -196,18 +198,14 @@ export default function TerminalTab({ tab, isActive }) {
 
   // Helper: write to the right channel type
   const writeToChannel = (data, channelId = tab.channelId) => {
-    if (tab.isLocal) window.electronAPI.local.write(channelId, data)
-    else window.electronAPI.ssh.write(channelId, data)
+    writeToTerminalChannel(tab, data, channelId)
   }
 
   // Broadcast write
   const broadcastWrite = (data) => {
     const { broadcastMode, tabs } = useSessionStore.getState()
     if (broadcastMode) {
-      tabs.forEach((t) => {
-        if (t.isLocal) window.electronAPI.local.write(t.channelId, data)
-        else window.electronAPI.ssh.write(t.channelId, data)
-      })
+      writeToBroadcastTargets(tabs, data)
     } else {
       writeToChannel(data)
     }
@@ -355,7 +353,7 @@ export default function TerminalTab({ tab, isActive }) {
           setReconnectCountdown(null)
           autoStartLogging()
           fitAddon.fit()
-          window.electronAPI.ssh.resize(tab.channelId, term.cols, term.rows)
+          resizeTerminalChannel(tab, term.cols, term.rows)
         })
       }
     }
@@ -478,19 +476,8 @@ export default function TerminalTab({ tab, isActive }) {
 
       const plain = stripAnsi(data)
 
-      // Line buffer for filter
-      const combined = pendingLineRef.current + plain
-      const parts = combined.split('\n')
-      pendingLineRef.current = parts.pop()
-      let changed = false
-      for (const line of parts) {
-        const clean = line.replace(/\r/g, '').trim()
-        if (clean) {
-          outputLinesRef.current.push(clean)
-          if (outputLinesRef.current.length > 5000) outputLinesRef.current.splice(0, 500)
-          changed = true
-        }
-      }
+      const { pendingLine, changed } = appendOutputLines(outputLinesRef.current, pendingLineRef.current, plain)
+      pendingLineRef.current = pendingLine
       if (changed && filterTextRef.current) {
         const { includeRe, excludeRe } = parseFilter(filterTextRef.current, isRegexModeRef.current)
         if (includeRe || excludeRe) setFilterLines(outputLinesRef.current.filter((l) => matchesFilter(l, includeRe, excludeRe)))
@@ -498,20 +485,12 @@ export default function TerminalTab({ tab, isActive }) {
 
       // CWD detection — prefer OSC 7 (shell integration), fall back to prompt regex
       // Enable in shell: printf '\e]7;file://%s%s\a' "$HOSTNAME" "$PWD"  (bash/zsh)
-      cwdRawBufferRef.current = (cwdRawBufferRef.current + data).slice(-4096)
-      cwdPlainBufferRef.current = (cwdPlainBufferRef.current + plain).slice(-4096)
-      const osc7 = cwdRawBufferRef.current.match(/\x1b\]7;file:\/\/[^/]*([^\x07\x1b]*)(?:\x07|\x1b\\)/)
-      if (osc7) {
-        try {
-          const detected = decodeURIComponent(osc7[1])
-          if (detected) { clearTimeout(cwdTimer); cwdTimer = setTimeout(() => setCwd(detected), 300) }
-        } catch (_) {}
-      } else {
-        const m = cwdPlainBufferRef.current.match(/(?:^|\r?\n|\r)[^\r\n]*[: ]([~/][^\r\n $#>]*?)\s*[$#>]\s*$/)
-        if (m) {
-          const detected = m[1].trim()
-          if (detected) { clearTimeout(cwdTimer); cwdTimer = setTimeout(() => setCwd(detected), 300) }
-        }
+      const cwdState = updateCwdDetection(cwdRawBufferRef.current, cwdPlainBufferRef.current, data, plain)
+      cwdRawBufferRef.current = cwdState.rawBuffer
+      cwdPlainBufferRef.current = cwdState.plainBuffer
+      if (cwdState.cwd) {
+        clearTimeout(cwdTimer)
+        cwdTimer = setTimeout(() => setCwd(cwdState.cwd), 300)
       }
     })
 
@@ -542,8 +521,7 @@ export default function TerminalTab({ tab, isActive }) {
         if (width === 0 || height === 0) return
         fitAddon.fit()
         const { cols, rows } = term
-        if (tab.isLocal) window.electronAPI.local.resize(tab.channelId, cols, rows)
-        else window.electronAPI.ssh.resize(tab.channelId, cols, rows)
+        resizeTerminalChannel(tab, cols, rows)
       } catch (_) {}
     })
     if (termRef.current) resizeObs.observe(termRef.current.parentElement)
@@ -580,8 +558,7 @@ export default function TerminalTab({ tab, isActive }) {
         const term = terminalInstanceRef.current
         if (term) {
           const { cols, rows } = term
-          if (tab.isLocal) window.electronAPI.local.resize(tab.channelId, cols, rows)
-          else window.electronAPI.ssh.resize(tab.channelId, cols, rows)
+          resizeTerminalChannel(tab, cols, rows)
         }
       } catch (_) {}
     })
