@@ -52,8 +52,8 @@ export default function SettingsDialog({ onClose }) {
   }
 
   return (
-    <div className="dialog-overlay" onClick={onClose}>
-      <div className="dialog" onClick={(e) => e.stopPropagation()} style={{ width: 480 }}>
+    <div className="dialog-overlay">
+      <div className="dialog" style={{ width: 480 }}>
         <div className="dialog-header">
           <h2>Settings</h2>
           <button className="icon-btn" onClick={onClose}><X size={16} /></button>
