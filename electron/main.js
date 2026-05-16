@@ -182,6 +182,10 @@ ipcMain.handle('sftp:uploadDir', async (_event, channelId, localDir, remoteDir) 
   try { return await sshManager.sftpUploadDir(channelId, localDir, remoteDir) }
   catch (err) { return { error: err.message } }
 })
+ipcMain.handle('sftp:downloadDir', async (_event, channelId, remoteDir, localDir) => {
+  try { return await sshManager.sftpDownloadDir(channelId, remoteDir, localDir) }
+  catch (err) { return { error: err.message } }
+})
 ipcMain.handle('sftp:rename', async (_event, channelId, oldPath, newPath) => {
   try { return await sshManager.sftpRename(channelId, oldPath, newPath) }
   catch (err) { return { error: err.message } }

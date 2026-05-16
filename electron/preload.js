@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sftp:upload', channelId, localPath, remotePath),
     uploadDir: (channelId, localDir, remoteDir) =>
       ipcRenderer.invoke('sftp:uploadDir', channelId, localDir, remoteDir),
+    downloadDir: (channelId, remoteDir, localDir) =>
+      ipcRenderer.invoke('sftp:downloadDir', channelId, remoteDir, localDir),
     rename: (channelId, oldPath, newPath) =>
       ipcRenderer.invoke('sftp:rename', channelId, oldPath, newPath),
     delete: (channelId, path) => ipcRenderer.invoke('sftp:delete', channelId, path),

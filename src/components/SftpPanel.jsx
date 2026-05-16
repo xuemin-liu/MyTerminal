@@ -24,7 +24,8 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [selected, setSelected] = useState(null)
+  const [selectedNames, setSelectedNames] = useState(() => new Set())
+  const [anchorName, setAnchorName] = useState(null)
   const [renaming, setRenaming] = useState(null)
   const [renameValue, setRenameValue] = useState('')
   const [favorites, setFavorites] = useState([])
@@ -47,7 +48,8 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
     const requestId = ++loadRequestRef.current
     setLoading(true)
     setError(null)
-    setSelected(null)
+    setSelectedNames(new Set())
+    setAnchorName(null)
     const result = await window.electronAPI.sftp.list(channelId, dir)
     if (requestId !== loadRequestRef.current) return
     setLoading(false)
@@ -179,11 +181,42 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   // ── File operations ────────────────────────────────────────────────────────
 
   const handleDownload = async () => {
-    if (!selected) return
-    const result = await window.electronAPI.dialog.saveFile({ defaultPath: selected.name })
-    if (result.canceled) return
-    const res = await window.electronAPI.sftp.download(channelId, joinPath(path, selected.name), result.filePath)
-    if (res?.error) setError(res.error)
+    if (selectedItems.length === 0) return
+
+    // Single file → save-as dialog. Otherwise pick a parent directory and
+    // recreate each selected file/folder inside it.
+    if (selectedItems.length === 1 && selectedItems[0].type !== 'd') {
+      const only = selectedItems[0]
+      const result = await window.electronAPI.dialog.saveFile({ defaultPath: only.name })
+      if (result.canceled) return
+      const res = await window.electronAPI.sftp.download(channelId, joinPath(path, only.name), result.filePath)
+      if (res?.error) setError(res.error)
+      return
+    }
+
+    const pick = await window.electronAPI.dialog.openFile({
+      title: selectedItems.length === 1
+        ? `Download "${selectedItems[0].name}" to…`
+        : `Download ${selectedItems.length} items to…`,
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (pick.canceled || !pick.filePaths?.[0]) return
+    const parent = pick.filePaths[0]
+    const sep = parent.includes('\\') ? '\\' : '/'
+    const trimmed = parent.endsWith('\\') || parent.endsWith('/') ? parent.slice(0, -1) : parent
+
+    setLoading(true)
+    const failures = []
+    for (const item of selectedItems) {
+      const remotePath = joinPath(path, item.name)
+      const target = trimmed + sep + item.name
+      const res = item.type === 'd'
+        ? await window.electronAPI.sftp.downloadDir(channelId, remotePath, target)
+        : await window.electronAPI.sftp.download(channelId, remotePath, target)
+      if (res?.error) failures.push(`${item.name}: ${res.error}`)
+    }
+    setLoading(false)
+    if (failures.length) setError(failures.join('\n'))
   }
 
   const handleUpload = async () => {
@@ -206,18 +239,26 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   }
 
   const handleDelete = async () => {
-    if (!selected) return
-    if (!confirm(`Delete "${selected.name}"?`)) return
-    const res = await window.electronAPI.sftp.delete(channelId, joinPath(path, selected.name))
-    if (res?.error) { setError(res.error); return }
-    setSelected(null)
+    if (selectedItems.length === 0) return
+    const msg = selectedItems.length === 1
+      ? `Delete "${selectedItems[0].name}"?`
+      : `Delete ${selectedItems.length} items?`
+    if (!confirm(msg)) return
+    const failures = []
+    for (const item of selectedItems) {
+      const res = await window.electronAPI.sftp.delete(channelId, joinPath(path, item.name))
+      if (res?.error) failures.push(`${item.name}: ${res.error}`)
+    }
+    if (failures.length) setError(failures.join('\n'))
+    setSelectedNames(new Set())
+    setAnchorName(null)
     loadDir(path)
   }
 
   const startRename = () => {
-    if (!selected) return
-    setRenaming(selected)
-    setRenameValue(selected.name)
+    if (!singleSelected) return
+    setRenaming(singleSelected)
+    setRenameValue(singleSelected.name)
   }
 
   const commitRename = async () => {
@@ -271,12 +312,47 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
     return sortAsc ? <SortAsc size={11} /> : <SortDesc size={11} />
   }
 
+  // ── Selection ───────────────────────────────────────────────────────────────
+
+  const selectedItems = sortedItems.filter((i) => selectedNames.has(i.name))
+  const singleSelected = selectedItems.length === 1 ? selectedItems[0] : null
+
+  const handleItemClick = (item, e) => {
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedNames((prev) => {
+        const next = new Set(prev)
+        if (next.has(item.name)) next.delete(item.name)
+        else next.add(item.name)
+        return next
+      })
+      setAnchorName(item.name)
+    } else if (e.shiftKey && anchorName) {
+      const aIdx = sortedItems.findIndex((i) => i.name === anchorName)
+      const bIdx = sortedItems.findIndex((i) => i.name === item.name)
+      if (aIdx >= 0 && bIdx >= 0) {
+        const [lo, hi] = aIdx < bIdx ? [aIdx, bIdx] : [bIdx, aIdx]
+        setSelectedNames(new Set(sortedItems.slice(lo, hi + 1).map((i) => i.name)))
+      } else {
+        setSelectedNames(new Set([item.name]))
+        setAnchorName(item.name)
+      }
+    } else {
+      setSelectedNames(new Set([item.name]))
+      setAnchorName(item.name)
+    }
+  }
+
   // ── Context menu ────────────────────────────────────────────────────────────
 
   const handleContextMenu = (e, item) => {
     e.preventDefault()
     e.stopPropagation()
-    setSelected(item)
+    // If the right-clicked item isn't already in the selection, replace the
+    // selection with just that item — standard file-manager behavior.
+    if (!selectedNames.has(item.name)) {
+      setSelectedNames(new Set([item.name]))
+      setAnchorName(item.name)
+    }
     const x = Math.min(e.clientX, window.innerWidth - 200)
     const y = Math.min(e.clientY, window.innerHeight - 300)
     setCtxMenu({ x, y, item })
@@ -320,30 +396,29 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   }
 
   const ctxDownload = async () => {
-    if (!ctxMenu?.item || ctxMenu.item.type === 'd') return
-    const result = await window.electronAPI.dialog.saveFile({ defaultPath: ctxMenu.item.name })
-    if (result.canceled) { closeCtxMenu(); return }
-    const res = await window.electronAPI.sftp.download(channelId, joinPath(path, ctxMenu.item.name), result.filePath)
-    if (res?.error) setError(res.error)
+    // handleContextMenu already normalized the selection to either "all
+    // previously-selected" (if the right-click hit one of them) or "just the
+    // right-clicked item" — so the toolbar handler does the right thing for
+    // both single- and multi-item downloads.
     closeCtxMenu()
+    await handleDownload()
   }
 
   const ctxRename = () => {
     if (!ctxMenu?.item) return
-    setSelected(ctxMenu.item)
+    setSelectedNames(new Set([ctxMenu.item.name]))
+    setAnchorName(ctxMenu.item.name)
     setRenaming(ctxMenu.item)
     setRenameValue(ctxMenu.item.name)
     closeCtxMenu()
   }
 
   const ctxDelete = async () => {
-    if (!ctxMenu?.item) return
-    if (!confirm(`Delete "${ctxMenu.item.name}"?`)) { closeCtxMenu(); return }
-    const res = await window.electronAPI.sftp.delete(channelId, joinPath(path, ctxMenu.item.name))
-    if (res?.error) { setError(res.error); closeCtxMenu(); return }
-    setSelected(null)
-    loadDir(path)
+    // Same routing as ctxDownload: handleContextMenu has already normalized
+    // the selection, so deleting through the toolbar handler keeps single- and
+    // multi-item behavior in lockstep with the rest of the panel.
     closeCtxMenu()
+    await handleDelete()
   }
 
   const ctxNewFolder = async () => {
@@ -384,10 +459,10 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
         </button>
         <button className="icon-btn" onClick={() => loadDir(path)} title="Refresh"><RefreshCw size={15} /></button>
         <button className="icon-btn" onClick={handleUpload} title="Upload"><Upload size={15} /></button>
-        <button className="icon-btn" onClick={handleDownload} title="Download" disabled={!selected || selected.type === 'd'}><Download size={15} /></button>
+        <button className="icon-btn" onClick={handleDownload} title="Download" disabled={selectedItems.length === 0}><Download size={15} /></button>
         <button className="icon-btn" onClick={handleMkdir} title="New folder"><FolderPlus size={15} /></button>
-        <button className="icon-btn" onClick={startRename} title="Rename" disabled={!selected}><Edit2 size={15} /></button>
-        <button className="icon-btn danger" onClick={handleDelete} title="Delete" disabled={!selected}><Trash2 size={15} /></button>
+        <button className="icon-btn" onClick={startRename} title="Rename" disabled={!singleSelected}><Edit2 size={15} /></button>
+        <button className="icon-btn danger" onClick={handleDelete} title="Delete" disabled={selectedItems.length === 0}><Trash2 size={15} /></button>
       </div>
 
       {/* Address bar — full-width path display / editor */}
@@ -459,8 +534,8 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
               {sortedItems.map(item => (
                 <tr
                   key={item.name}
-                  className={selected?.name === item.name ? 'selected' : ''}
-                  onClick={() => setSelected(item)}
+                  className={selectedNames.has(item.name) ? 'selected' : ''}
+                  onClick={(e) => handleItemClick(item, e)}
                   onDoubleClick={() => navigate(item)}
                   onContextMenu={(e) => handleContextMenu(e, item)}
                 >
@@ -497,9 +572,7 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
                 {ctxMenu.item.type === 'd' ? <FolderOpen size={14} /> : <FileEdit size={14} />}
                 {ctxMenu.item.type === 'd' ? 'Open' : 'Edit'}
               </button>
-              {ctxMenu.item.type === 'f' && (
-                <button onClick={ctxDownload}><FileDown size={14} /> Download</button>
-              )}
+              <button onClick={ctxDownload}><FileDown size={14} /> Download</button>
               <div className="context-menu-sep" />
               <button onClick={ctxCopyPath}><ClipboardCopy size={14} /> Copy Path</button>
               <button onClick={ctxCopyName}><Copy size={14} /> Copy Name</button>

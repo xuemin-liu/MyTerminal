@@ -243,6 +243,22 @@ class SshManager {
     return { success: true }
   }
 
+  async sftpDownloadDir(channelId, remoteDir, localDir) {
+    fs.mkdirSync(localDir, { recursive: true })
+    const entries = await this.sftpList(channelId, remoteDir)
+    for (const entry of entries) {
+      if (entry.name === '.' || entry.name === '..') continue
+      const remoteChild = remoteDir.endsWith('/') ? remoteDir + entry.name : remoteDir + '/' + entry.name
+      const localChild = require('path').join(localDir, entry.name)
+      if (entry.type === 'd') {
+        await this.sftpDownloadDir(channelId, remoteChild, localChild)
+      } else {
+        await this.sftpDownload(channelId, remoteChild, localChild)
+      }
+    }
+    return { success: true }
+  }
+
   async sftpRename(channelId, oldPath, newPath) {
     const sftp = await this._getSftp(channelId)
     return new Promise((resolve, reject) => {
