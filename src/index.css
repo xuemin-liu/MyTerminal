@@ -408,6 +408,14 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
   flex-wrap: nowrap;
   overflow-x: auto;
 }
+.sftp-address-bar {
+  display: flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-width: 0;
+}
 .sftp-path {
   flex: 1;
   font-size: 11px;
@@ -415,7 +423,26 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 4px;
+  padding: 3px 6px;
+  cursor: text;
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+.sftp-path:hover {
+  color: var(--text);
+  background: rgba(255,255,255,0.04);
+  border-color: var(--border);
+}
+.sftp-path-input {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 3px 6px;
+  outline: none;
+  min-width: 0;
 }
 .sftp-error { color: var(--danger); font-size: 12px; padding: 6px 12px; background: rgba(248,81,73,0.1); }
 .sftp-favorites {

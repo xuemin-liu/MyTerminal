@@ -33,6 +33,8 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   const [canGoForward, setCanGoForward] = useState(false)
   const [sortKey, setSortKey] = useState('name')  // 'name' | 'size' | 'mtime'
   const [sortAsc, setSortAsc] = useState(true)
+  const [editingPath, setEditingPath] = useState(false)
+  const [pathInput, setPathInput] = useState('')
   const [ctxMenu, setCtxMenu] = useState(null)
   const ctxMenuRef = useRef(null)
   const pathRef = useRef('/')
@@ -156,6 +158,22 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
 
   const goToFavorite = (fav) => {
     loadDir(fav, true)  // navigate SFTP + cd in terminal
+  }
+
+  const beginEditPath = () => {
+    setPathInput(path)
+    setEditingPath(true)
+  }
+
+  const commitEditPath = () => {
+    const target = pathInput.trim()
+    setEditingPath(false)
+    if (!target || target === path) return
+    loadDir(target, true)  // navigate SFTP + cd in terminal
+  }
+
+  const cancelEditPath = () => {
+    setEditingPath(false)
   }
 
   // ── File operations ────────────────────────────────────────────────────────
@@ -357,7 +375,6 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
         <button className="icon-btn" onClick={goForward} title="Forward" disabled={!canGoForward}><ArrowRight size={15} /></button>
         <button className="icon-btn" onClick={goUp} title="Up" disabled={path === '/'}><ChevronUp size={15} /></button>
         <button className="icon-btn" onClick={() => loadDir(sftpHome || '/')} title="Home"><Home size={15} /></button>
-        <span className="sftp-path">{path}</span>
         <button
           className={`icon-btn ${isFavorite ? 'active' : ''}`}
           onClick={toggleFavorite}
@@ -371,6 +388,31 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
         <button className="icon-btn" onClick={handleMkdir} title="New folder"><FolderPlus size={15} /></button>
         <button className="icon-btn" onClick={startRename} title="Rename" disabled={!selected}><Edit2 size={15} /></button>
         <button className="icon-btn danger" onClick={handleDelete} title="Delete" disabled={!selected}><Trash2 size={15} /></button>
+      </div>
+
+      {/* Address bar — full-width path display / editor */}
+      <div className="sftp-address-bar">
+        {editingPath ? (
+          <input
+            type="text"
+            className="sftp-path-input"
+            value={pathInput}
+            autoFocus
+            onChange={(e) => setPathInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitEditPath()
+              else if (e.key === 'Escape') cancelEditPath()
+            }}
+            onBlur={cancelEditPath}
+            spellCheck={false}
+          />
+        ) : (
+          <span
+            className="sftp-path"
+            onClick={beginEditPath}
+            title="Click to enter a path"
+          >{path}</span>
+        )}
       </div>
 
       {/* Favorites bar */}
