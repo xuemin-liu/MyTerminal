@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Plus, Trash2, Edit2, Terminal, Download, Upload, ChevronDown, ChevronRight, Search, Settings, FileUp } from 'lucide-react'
+import { Plus, Trash2, Edit2, Terminal, Download, Upload, ChevronDown, ChevronRight, Search, Settings, FileUp, Copy } from 'lucide-react'
 import useSessionStore from '../store/useSessionStore'
 import SessionDialog from './SessionDialog'
 import SettingsDialog from './SettingsDialog'
 
 export default function Sidebar() {
-  const { sessions, openTab, deleteSession, exportSessions, importSessions } = useSessionStore()
+  const { sessions, openTab, deleteSession, addSession, exportSessions, importSessions } = useSessionStore()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editSession, setEditSession] = useState(null)
   const [contextMenu, setContextMenu] = useState(null)
@@ -30,6 +30,18 @@ export default function Sidebar() {
 
   const handleDelete = async () => {
     await deleteSession(contextMenu.session.id)
+    setContextMenu(null)
+  }
+
+  const handleDuplicate = async () => {
+    const src = contextMenu.session
+    const baseName = src.name || src.host || 'session'
+    const existingNames = new Set(sessions.map((s) => s.name))
+    let candidate = `${baseName} (copy)`
+    let n = 2
+    while (existingNames.has(candidate)) candidate = `${baseName} (copy ${n++})`
+    const copy = { ...src, id: crypto.randomUUID(), name: candidate }
+    await addSession(copy)
     setContextMenu(null)
   }
 
@@ -137,6 +149,7 @@ export default function Sidebar() {
       {contextMenu && (
         <div ref={menuRef} className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
           <button onClick={handleEdit}><Edit2 size={13} /> Edit</button>
+          <button onClick={handleDuplicate}><Copy size={13} /> Save a copy</button>
           <button onClick={handleDelete} className="danger"><Trash2 size={13} /> Delete</button>
         </div>
       )}
