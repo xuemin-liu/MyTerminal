@@ -433,6 +433,35 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
   background: rgba(255,255,255,0.04);
   border-color: var(--border);
 }
+.sftp-breadcrumbs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 11px;
+  padding: 2px 4px;
+  overflow-x: auto;
+  white-space: nowrap;
+  cursor: text;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  min-width: 0;
+}
+.sftp-breadcrumbs:hover { border-color: var(--border); background: rgba(255,255,255,0.02); }
+.sftp-breadcrumbs::-webkit-scrollbar { height: 2px; }
+.crumb {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.crumb:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.crumb-sep { color: var(--text-muted); opacity: 0.6; padding: 0 1px; user-select: none; }
+.crumb-tail { flex: 1; min-width: 12px; }
 .sftp-path-input {
   flex: 1;
   font-size: 11px;

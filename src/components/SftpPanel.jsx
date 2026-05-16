@@ -465,7 +465,7 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
         <button className="icon-btn danger" onClick={handleDelete} title="Delete" disabled={selectedItems.length === 0}><Trash2 size={15} /></button>
       </div>
 
-      {/* Address bar — full-width path display / editor */}
+      {/* Address bar — breadcrumb crumbs / editor */}
       <div className="sftp-address-bar">
         {editingPath ? (
           <input
@@ -482,11 +482,38 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
             spellCheck={false}
           />
         ) : (
-          <span
-            className="sftp-path"
+          <div
+            className="sftp-breadcrumbs"
             onClick={beginEditPath}
-            title="Click to enter a path"
-          >{path}</span>
+            title="Click empty area to type a path"
+          >
+            <button
+              type="button"
+              className="crumb"
+              onClick={(e) => { e.stopPropagation(); loadDir('/', true) }}
+              title="Go to /"
+            >/</button>
+            {(() => {
+              const segs = path.split('/').filter(Boolean)
+              let cum = ''
+              return segs.map((seg, i) => {
+                cum += '/' + seg
+                const target = cum
+                return (
+                  <React.Fragment key={i}>
+                    <span className="crumb-sep">/</span>
+                    <button
+                      type="button"
+                      className="crumb"
+                      onClick={(e) => { e.stopPropagation(); loadDir(target, true) }}
+                      title={`Go to ${target}`}
+                    >{seg}</button>
+                  </React.Fragment>
+                )
+              })
+            })()}
+            <span className="crumb-tail" />
+          </div>
         )}
       </div>
 
