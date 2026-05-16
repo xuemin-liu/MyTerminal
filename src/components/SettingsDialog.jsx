@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { X, Download, Upload } from 'lucide-react'
 import useSessionStore from '../store/useSessionStore'
 
@@ -7,6 +7,18 @@ export default function SettingsDialog({ onClose }) {
   const [local, setLocal] = useState({ ...settings })
   const [backupStatus, setBackupStatus] = useState('')
   const [credPrompt, setCredPrompt] = useState(false)
+
+  // Escape closes whichever dialog is on top: credentials prompt first,
+  // otherwise the settings dialog itself.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== 'Escape') return
+      if (credPrompt) setCredPrompt(false)
+      else onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [credPrompt, onClose])
 
   const runExport = async (includeCredentials) => {
     setCredPrompt(false)
