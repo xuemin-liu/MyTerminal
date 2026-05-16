@@ -9,6 +9,7 @@ const tunnelManager = require('./tunnel-manager')
 const registerSessionHandlers = require('./ipc/sessions')
 const registerLoggingHandlers = require('./ipc/logging')
 const registerTunnelHandlers = require('./ipc/tunnels')
+const registerBackupHandlers = require('./ipc/backup')
 
 const store = new Store({ name: 'sessions' })
 
@@ -227,10 +228,6 @@ ipcMain.handle('dialog:saveFile', async (_event, options) => {
 
 const getMainWindow = () => mainWindow
 
-registerSessionHandlers(store, { encryptSession, decryptSession, SENSITIVE_FIELDS, getMainWindow })
-registerTunnelHandlers(store, { sshManager, tunnelManager, assertString, assertPlainObject })
-registerLoggingHandlers({ getMainWindow })
-
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS = {
@@ -241,6 +238,11 @@ const DEFAULT_SETTINGS = {
   loggingEnabled: false,
   logDirectory: '',
 }
+
+registerSessionHandlers(store, { encryptSession, decryptSession, SENSITIVE_FIELDS, getMainWindow })
+registerTunnelHandlers(store, { sshManager, tunnelManager, assertString, assertPlainObject })
+registerLoggingHandlers({ getMainWindow })
+registerBackupHandlers(store, { encryptSession, decryptSession, encryptField, decryptField, SENSITIVE_FIELDS, DEFAULT_SETTINGS, getMainWindow })
 
 ipcMain.handle('settings:get', () => {
   return { ...DEFAULT_SETTINGS, ...store.get('settings-prefs', {}) }

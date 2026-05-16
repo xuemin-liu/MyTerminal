@@ -548,6 +548,9 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
   font-size: 12px;
 }
 .browse-btn:hover { background: rgba(255,255,255,0.1); }
+.browse-btn { display: inline-flex; align-items: center; gap: 6px; }
+
+.form-hint { font-size: 11px; color: var(--text-muted); line-height: 1.45; }
 
 .auth-toggle { display: flex; gap: 8px; }
 .auth-toggle button {

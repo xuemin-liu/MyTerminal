@@ -94,6 +94,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     get: () => ipcRenderer.invoke('workspace:get'),
     set: (workspace) => ipcRenderer.invoke('workspace:set', workspace),
   },
+  backup: {
+    export: (options) => ipcRenderer.invoke('backup:export', options),
+    import: () => ipcRenderer.invoke('backup:import'),
+  },
   dialog: {
     openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),
     saveFile: (options) => ipcRenderer.invoke('dialog:saveFile', options),

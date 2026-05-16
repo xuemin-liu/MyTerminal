@@ -11,7 +11,8 @@
     "dist:win": "cross-env NODE_OPTIONS=--no-deprecation electron-vite build && cross-env NODE_OPTIONS=--no-deprecation electron-builder --win --dir",
     "test": "vitest run",
     "lint": "eslint .",
-    "rebuild": "electron-rebuild -f -w node-pty"
+    "rebuild": "electron-rebuild -f -w node-pty",
+    "export-backup": "node scripts/export-backup.js"
   },
   "build": {
     "appId": "com.myterminal.app",

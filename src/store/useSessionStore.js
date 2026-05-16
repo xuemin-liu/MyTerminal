@@ -86,6 +86,21 @@ const useSessionStore = create((set, get) => ({
     return result
   },
 
+  exportBackup: async (options) => {
+    return await window.electronAPI.backup.export(options)
+  },
+
+  importBackup: async () => {
+    const result = await window.electronAPI.backup.import()
+    if (result?.success) {
+      // Refresh sessions / snippets / settings so the UI reflects merged data.
+      // SFTP favorites, filter presets and tunnel configs load lazily per-panel
+      // and will pick up the new data the next time their owning panel mounts.
+      await get().loadSessions()
+    }
+    return result
+  },
+
   // ── Snippet actions ──────────────────────────────────────────────────────────
 
   addSnippet: async (snippet) => {

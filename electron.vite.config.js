@@ -15,6 +15,7 @@ export default defineConfig({
           'ipc/sessions': resolve(__dirname, 'electron/ipc/sessions.js'),
           'ipc/logging': resolve(__dirname, 'electron/ipc/logging.js'),
           'ipc/tunnels': resolve(__dirname, 'electron/ipc/tunnels.js'),
+          'ipc/backup': resolve(__dirname, 'electron/ipc/backup.js'),
         },
         output: {
           entryFileNames: '[name].js',
