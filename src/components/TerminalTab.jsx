@@ -401,8 +401,16 @@ export default function TerminalTab({ tab, isActive }) {
       if (data === '\r') {
         if (lineBuffer.startsWith(AI_PREFIX)) {
           const query = lineBuffer.slice(AI_PREFIX.length).trim()
+          if (!query) {
+            // Empty AI query — flush the locally-echoed "??" through the
+            // channel so the shell receives ??\r, not just \r.
+            term.write('\b \b'.repeat(lineBuffer.length))
+            broadcastWrite(lineBuffer)
+            lineBuffer = ''
+            broadcastWrite(data)
+            return
+          }
           lineBuffer = ''
-          if (!query) { broadcastWrite(data); return }
           aiPending = true
           term.write('\r\x1b[2K')
           term.write(`\x1b[90m⟳ AI: ${query}\x1b[0m`)
