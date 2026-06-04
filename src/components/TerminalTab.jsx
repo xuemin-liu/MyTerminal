@@ -377,57 +377,8 @@ export default function TerminalTab({ tab, isActive }) {
     const termContainer = termRef.current?.parentElement
     if (termContainer) termContainer.addEventListener('wheel', handleWheel, { passive: false })
 
-    // AI inline mode
-    const AI_PREFIX = '??'
-    let lineBuffer = ''
-    let aiPending = false
-
     const inputDisposer = term.onData((data) => {
-      if (aiPending) return
-      const code = data.charCodeAt(0)
-
-      if (code === 127) {
-        if (lineBuffer.length > 0) {
-          lineBuffer = lineBuffer.slice(0, -1)
-          if (lineBuffer.startsWith(AI_PREFIX.slice(0, lineBuffer.length)) || lineBuffer.startsWith(AI_PREFIX)) {
-            term.write('\b \b')
-            return
-          }
-        }
-        broadcastWrite(data)
-        return
-      }
-
       if (data === '\r') {
-        if (lineBuffer.startsWith(AI_PREFIX)) {
-          const query = lineBuffer.slice(AI_PREFIX.length).trim()
-          if (!query) {
-            // Empty AI query — flush the locally-echoed "??" through the
-            // channel so the shell receives ??\r, not just \r.
-            term.write('\b \b'.repeat(lineBuffer.length))
-            broadcastWrite(lineBuffer)
-            lineBuffer = ''
-            broadcastWrite(data)
-            return
-          }
-          lineBuffer = ''
-          aiPending = true
-          term.write('\r\x1b[2K')
-          term.write(`\x1b[90m⟳ AI: ${query}\x1b[0m`)
-          const osHint = tab.wslDistro
-            ? `Linux (WSL: ${tab.wslDistro})`
-            : tab.isLocal && window.electronAPI.platform === 'win32' ? 'Windows PowerShell' : 'Linux'
-          window.electronAPI.ai.complete({ query, os: osHint }).then((result) => {
-            aiPending = false
-            term.write('\r\x1b[2K')
-            if (result.error === 'NO_KEY') { term.write('\x1b[33m[AI] No API key set — use Ctrl+K\x1b[0m\r\n'); return }
-            if (result.error) { term.write(`\x1b[31m[AI error] ${result.error}\x1b[0m\r\n`); return }
-            if (result.type === 'text') { term.write(`\x1b[36m[AI] ${result.value}\x1b[0m\r\n`); return }
-            term.write(result.value)
-            broadcastWrite(result.value + '\r')
-          })
-          return
-        }
         // Capture the current line for sticky command overlay
         const curLine = term.buffer.active.getLine(term.buffer.active.baseY + term.buffer.active.cursorY)
         if (curLine) {
@@ -441,39 +392,8 @@ export default function TerminalTab({ tab, isActive }) {
             setShowStickyCmd(false)
           }
         }
-        // Flush any locally-echoed partial AI prefix: erase the local echo
-        // and forward it through the channel so the shell receives it
-        // (otherwise typing/pasting "?" then Enter would silently drop the "?").
-        if (lineBuffer.length > 0) {
-          term.write('\b \b'.repeat(lineBuffer.length))
-          broadcastWrite(lineBuffer)
-        }
-        lineBuffer = ''
-        broadcastWrite(data)
-        return
       }
-
-      if (code < 32 && code !== 9) {
-        if (lineBuffer.length > 0) {
-          term.write('\b \b'.repeat(lineBuffer.length))
-          broadcastWrite(lineBuffer)
-        }
-        lineBuffer = ''
-        broadcastWrite(data)
-        return
-      }
-
-      lineBuffer += data
-      if (lineBuffer.startsWith(AI_PREFIX.slice(0, lineBuffer.length)) || lineBuffer.startsWith(AI_PREFIX)) {
-        term.write(data); return
-      }
-      // Erase chars that were locally echoed as part of the partial prefix
-      // so SSH's echo doesn't double-display them
-      const prevEchoed = lineBuffer.length - data.length
-      if (prevEchoed > 0) term.write('\b \b'.repeat(prevEchoed))
-      if (lineBuffer.length === data.length) broadcastWrite(data)
-      else broadcastWrite(lineBuffer)
-      lineBuffer = ''
+      broadcastWrite(data)
     })
 
     // SSH/local data → terminal
