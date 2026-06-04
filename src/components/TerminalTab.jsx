@@ -433,16 +433,23 @@ export default function TerminalTab({ tab, isActive }) {
             setShowStickyCmd(false)
           }
         }
-        // Erase any locally-echoed partial prefix before sending Enter
-        if (lineBuffer.length > 0) term.write('\b \b'.repeat(lineBuffer.length))
+        // Flush any locally-echoed partial AI prefix: erase the local echo
+        // and forward it through the channel so the shell receives it
+        // (otherwise typing/pasting "?" then Enter would silently drop the "?").
+        if (lineBuffer.length > 0) {
+          term.write('\b \b'.repeat(lineBuffer.length))
+          broadcastWrite(lineBuffer)
+        }
         lineBuffer = ''
         broadcastWrite(data)
         return
       }
 
       if (code < 32 && code !== 9) {
-        // Erase any chars that were locally echoed as part of a partial prefix
-        if (lineBuffer.length > 0) term.write('\b \b'.repeat(lineBuffer.length))
+        if (lineBuffer.length > 0) {
+          term.write('\b \b'.repeat(lineBuffer.length))
+          broadcastWrite(lineBuffer)
+        }
         lineBuffer = ''
         broadcastWrite(data)
         return
