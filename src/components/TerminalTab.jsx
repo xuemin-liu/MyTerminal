@@ -179,7 +179,7 @@ export default function TerminalTab({ tab, isActive }) {
   }
   const handlePaste = async () => {
     const text = await navigator.clipboard.readText()
-    if (text) writeToChannel(text)
+    if (text) terminalInstanceRef.current?.paste(text)
     setCtxMenu(null)
     focusTerminal()
   }
