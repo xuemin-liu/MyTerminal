@@ -168,15 +168,20 @@ export default function TerminalTab({ tab, isActive }) {
     const y = Math.min(e.clientY, window.innerHeight - 80)
     setCtxMenu({ x, y, hasSelection: !!terminalInstanceRef.current?.getSelection()?.length })
   }
+  // Menu/dialog clicks steal focus from xterm's hidden textarea, so the next
+  // keystroke (e.g. Enter) wouldn't reach the terminal until refocused.
+  const focusTerminal = () => terminalInstanceRef.current?.focus()
   const handleCopy = () => {
     const sel = terminalInstanceRef.current?.getSelection()
     if (sel) navigator.clipboard.writeText(sel)
     setCtxMenu(null)
+    focusTerminal()
   }
   const handlePaste = async () => {
     const text = await navigator.clipboard.readText()
     if (text) writeToChannel(text)
     setCtxMenu(null)
+    focusTerminal()
   }
 
   useEffect(() => {
@@ -190,10 +195,12 @@ export default function TerminalTab({ tab, isActive }) {
     const sel = terminalInstanceRef.current?.getSelection()
     if (sel) navigator.clipboard.writeText(sel)
     setCtrlCDialog(null)
+    focusTerminal()
   }
   const handleCtrlCBreak = () => {
     writeToChannel('\x03')
     setCtrlCDialog(null)
+    focusTerminal()
   }
 
   // Helper: write to the right channel type
@@ -711,8 +718,8 @@ export default function TerminalTab({ tab, isActive }) {
       {/* AI bar */}
       {showAi && (
         <AiBar
-          onRun={(cmd) => writeToChannel(cmd)}
-          onClose={() => setShowAi(false)}
+          onRun={(cmd) => { writeToChannel(cmd); focusTerminal() }}
+          onClose={() => { setShowAi(false); focusTerminal() }}
           getSelection={() => terminalInstanceRef.current?.getSelection() || ''}
           getRecentOutput={() => outputLinesRef.current.slice(-150).join('\n')}
           osHint={
@@ -742,14 +749,14 @@ export default function TerminalTab({ tab, isActive }) {
           <label title="Whole word"><input type="checkbox" checked={wholeWord} onChange={(e) => setWholeWord(e.target.checked)} /> W</label>
           <button onClick={() => doSearch('prev')} title="Previous">↑</button>
           <button onClick={() => doSearch('next')} title="Next">↓</button>
-          <button onClick={() => { setShowSearch(false); searchAddonRef.current?.clearDecorations() }}>✕</button>
+          <button onClick={() => { setShowSearch(false); searchAddonRef.current?.clearDecorations(); focusTerminal() }}>✕</button>
         </div>
       )}
 
       {/* Snippets panel */}
       {showSnippets && (
         <SnippetPanel
-          onInsert={(cmd) => { writeToChannel(cmd + '\r') }}
+          onInsert={(cmd) => { writeToChannel(cmd + '\r'); focusTerminal() }}
           onClose={() => setShowSnippets(false)}
         />
       )}
@@ -815,7 +822,7 @@ export default function TerminalTab({ tab, isActive }) {
                 >
                   <Bookmark size={14} />
                 </button>
-                <button className="icon-btn" onClick={() => { setShowFilter(false); applyFilter(''); setActivePreset(null) }}>✕</button>
+                <button className="icon-btn" onClick={() => { setShowFilter(false); applyFilter(''); setActivePreset(null); focusTerminal() }}>✕</button>
               </div>
               <div className="filter-presets">
                 {FILTER_PRESETS.map((p) => (
