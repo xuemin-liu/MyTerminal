@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { X } from 'lucide-react'
+import { registerOsc52ClipboardHandler } from '../utils/terminalClipboardUtils'
 
 const TERMINAL_THEME = {
   background: '#0d1117', foreground: '#c9d1d9', cursor: '#58a6ff',
@@ -33,6 +34,10 @@ export default function SplitTerminalPane({ channelId, config, onClose }) {
     const fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.loadAddon(new WebLinksAddon())
+    const osc52ClipboardDisposer = registerOsc52ClipboardHandler(
+      term,
+      (text) => window.electronAPI.clipboard.writeText(text)
+    )
     term.open(termRef.current)
     fitAddon.fit()
 
@@ -105,6 +110,7 @@ export default function SplitTerminalPane({ channelId, config, onClose }) {
       isMounted = false
       clearInterval(reconnectTimer)
       inputDisposer.dispose()
+      osc52ClipboardDisposer?.dispose()
       removeData(); removeClose(); removeError()
       resizeObs.disconnect()
       window.electronAPI.ssh.disconnect(channelId)

@@ -52,6 +52,6 @@ export function colorizeOutput(text) {
 }
 
 export const stripAnsi = (s) => s
+  .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '')
   .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
-  .replace(/\x1b\][^\x07]*\x07/g, '')
   .replace(/\x1b[()][0-9A-Z]/g, '')

@@ -19,6 +19,7 @@ import useSessionStore from '../store/useSessionStore'
 import { FILTER_PRESETS, parseFilter, matchesFilter, colorizeOutput, stripAnsi } from '../utils/terminalUtils'
 import { appendOutputLines, updateCwdDetection } from '../utils/terminalSessionUtils'
 import { resizeTerminalChannel, writeToBroadcastTargets, writeToTerminalChannel } from '../utils/terminalChannels'
+import { registerOsc52ClipboardHandler, updateOscSequenceState } from '../utils/terminalClipboardUtils'
 
 export default function TerminalTab({ tab, isActive }) {
   const { addSplitPane, removeSplitPane, settings } = useSessionStore()
@@ -81,6 +82,7 @@ export default function TerminalTab({ tab, isActive }) {
   const loggingRef = useRef(false)
   const cwdRawBufferRef = useRef('')
   const cwdPlainBufferRef = useRef('')
+  const oscSequenceActiveRef = useRef(false)
 
   // Sync refs
   useEffect(() => { colorizeRef.current = colorize }, [colorize])
@@ -247,6 +249,10 @@ export default function TerminalTab({ tab, isActive }) {
     term.loadAddon(fitAddon)
     term.loadAddon(new WebLinksAddon())
     term.loadAddon(searchAddon)
+    const osc52ClipboardDisposer = registerOsc52ClipboardHandler(
+      term,
+      (text) => window.electronAPI.clipboard.writeText(text)
+    )
 
     terminalInstanceRef.current = term
     fitAddonRef.current = fitAddon
@@ -409,7 +415,11 @@ export default function TerminalTab({ tab, isActive }) {
         }
       }
 
-      term.write(colorizeRef.current ? colorizeOutput(data) : data)
+      const wasInsideOsc = oscSequenceActiveRef.current
+      oscSequenceActiveRef.current = updateOscSequenceState(wasInsideOsc, data)
+      const hasOscSequenceStart = data.includes('\x1b]')
+      const shouldColorize = colorizeRef.current && !wasInsideOsc && !hasOscSequenceStart
+      term.write(shouldColorize ? colorizeOutput(data) : data)
 
       // Session logging — fire-and-forget
       if (loggingRef.current) {
@@ -472,6 +482,7 @@ export default function TerminalTab({ tab, isActive }) {
       () => inputDisposer.dispose(),
       () => scrollDisposer.dispose(),
       () => { if (xtermViewport) xtermViewport.removeEventListener('scroll', handleViewportScroll) },
+      () => osc52ClipboardDisposer?.dispose(),
       removeData, removeClose, removeError,
       () => resizeObs.disconnect(),
       () => { if (termContainer) termContainer.removeEventListener('wheel', handleWheel) },

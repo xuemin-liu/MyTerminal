@@ -81,6 +81,10 @@ describe('stripAnsi', () => {
     expect(stripAnsi('\x1b]0;title\x07text')).toBe('text')
   })
 
+  it('strips ST-terminated OSC sequences', () => {
+    expect(stripAnsi('\x1b]52;c;aGVsbG8=\x1b\\text')).toBe('text')
+  })
+
   it('strips charset sequences', () => {
     expect(stripAnsi('\x1b(Btext')).toBe('text')
   })

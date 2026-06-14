@@ -10,6 +10,7 @@ const browserGlobals = {
   setTimeout: 'readonly', clearTimeout: 'readonly',
   setInterval: 'readonly', clearInterval: 'readonly',
   URL: 'readonly', fetch: 'readonly', Event: 'readonly',
+  atob: 'readonly', TextDecoder: 'readonly',
 }
 
 const nodeGlobals = {
