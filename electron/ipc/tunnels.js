@@ -1,4 +1,37 @@
 const { ipcMain } = require('electron')
+const { normalizeRemoteBindAddress } = require('../security-utils')
+
+function normalizePort(value, name) {
+  if (!Number.isInteger(value) || value < 1 || value > 65535) {
+    throw new RangeError(`${name} must be an integer from 1 to 65535`)
+  }
+  return value
+}
+
+function normalizeHost(value, fallback, name) {
+  const host = value || fallback
+  if (typeof host !== 'string' || !host.trim() || /[\r\n\0]/.test(host)) {
+    throw new TypeError(`${name} must be a host string`)
+  }
+  return host.trim()
+}
+
+function normalizeTunnelConfig(config) {
+  const normalized = { ...config }
+  if (normalized.type === 'local') {
+    normalized.localPort = normalizePort(normalized.localPort, 'localPort')
+    normalized.remotePort = normalizePort(normalized.remotePort, 'remotePort')
+    normalized.remoteHost = normalizeHost(normalized.remoteHost, 'localhost', 'remoteHost')
+  } else if (normalized.type === 'remote') {
+    normalized.localPort = normalizePort(normalized.localPort, 'localPort')
+    normalized.remotePort = normalizePort(normalized.remotePort, 'remotePort')
+    normalized.localHost = normalizeHost(normalized.localHost, '127.0.0.1', 'localHost')
+    normalized.remoteBindAddress = normalizeRemoteBindAddress(normalized.remoteBindAddress)
+  } else if (normalized.type === 'dynamic') {
+    normalized.localPort = normalizePort(normalized.localPort, 'localPort')
+  }
+  return normalized
+}
 
 module.exports = function registerTunnelHandlers(store, { sshManager, tunnelManager, assertString, assertPlainObject }) {
   ipcMain.handle('tunnel:start', async (_event, channelId, tunnelId, tunnelConfig) => {
@@ -10,16 +43,17 @@ module.exports = function registerTunnelHandlers(store, { sshManager, tunnelMana
       if (!['local', 'remote', 'dynamic'].includes(tunnelConfig.type)) {
         return { error: 'Unknown tunnel type' }
       }
+      const safeTunnelConfig = normalizeTunnelConfig(tunnelConfig)
       const conn = sshManager.connections.get(channelId)
       if (!conn) return { error: 'No SSH connection' }
       const client = conn.client
 
-      if (tunnelConfig.type === 'local') {
-        return await tunnelManager.startLocal(tunnelId, channelId, client, tunnelConfig)
-      } else if (tunnelConfig.type === 'remote') {
-        return await tunnelManager.startRemote(tunnelId, channelId, client, tunnelConfig)
-      } else if (tunnelConfig.type === 'dynamic') {
-        return await tunnelManager.startDynamic(tunnelId, channelId, client, tunnelConfig)
+      if (safeTunnelConfig.type === 'local') {
+        return await tunnelManager.startLocal(tunnelId, channelId, client, safeTunnelConfig)
+      } else if (safeTunnelConfig.type === 'remote') {
+        return await tunnelManager.startRemote(tunnelId, channelId, client, safeTunnelConfig)
+      } else if (safeTunnelConfig.type === 'dynamic') {
+        return await tunnelManager.startDynamic(tunnelId, channelId, client, safeTunnelConfig)
       }
       return { error: 'Unknown tunnel type' }
     } catch (err) { return { error: err.message } }

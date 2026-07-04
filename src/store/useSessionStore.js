@@ -19,6 +19,7 @@ const useSessionStore = create((set, get) => ({
     defaultFontSize: 14,
     defaultScrollback: 10000,
     colorizeByDefault: true,
+    osc52ClipboardEnabled: false,
     keepaliveInterval: 10000,
     loggingEnabled: false,
     logDirectory: '',

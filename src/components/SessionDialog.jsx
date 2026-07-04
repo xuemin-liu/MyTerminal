@@ -41,27 +41,42 @@ export default function SessionDialog({ session, onClose }) {
 
   const set = (field, value) => setForm((f) => ({ ...f, [field]: value }))
 
-  const buildData = () => ({
-    id: session?.id || crypto.randomUUID(),
-    name: form.name || `${form.username}@${form.host}${parseInt(form.port, 10) !== 22 ? ':' + form.port : ''}`,
-    host: form.host,
-    port: parseInt(form.port, 10) || 22,
-    username: form.username,
-    authType: form.authType,
-    password: form.authType === 'password' ? form.password : '',
-    keyPath: form.authType === 'key' ? form.keyPath : '',
-    passphrase: form.authType === 'key' ? form.passphrase : '',
-    group: form.group,
-    ...(form.useJump && form.jumpHost ? {
-      jumpHost: form.jumpHost,
-      jumpPort: parseInt(form.jumpPort, 10) || 22,
-      jumpUsername: form.jumpUsername,
-      jumpAuthType: form.jumpAuthType,
-      jumpPassword: form.jumpAuthType === 'password' ? form.jumpPassword : '',
-      jumpKeyPath: form.jumpAuthType === 'key' ? form.jumpKeyPath : '',
-      jumpPassphrase: form.jumpAuthType === 'key' ? form.jumpPassphrase : '',
-    } : {}),
-  })
+  const putSecret = (data, field, value, active) => {
+    if (!active) {
+      data[field] = ''
+      return
+    }
+    if (!session || value) data[field] = value
+  }
+
+  const buildData = () => {
+    const data = {
+      id: session?.id || crypto.randomUUID(),
+      name: form.name || `${form.username}@${form.host}${parseInt(form.port, 10) !== 22 ? ':' + form.port : ''}`,
+      host: form.host,
+      port: parseInt(form.port, 10) || 22,
+      username: form.username,
+      authType: form.authType,
+      keyPath: form.authType === 'key' ? form.keyPath : '',
+      group: form.group,
+    }
+    putSecret(data, 'password', form.password, form.authType === 'password')
+    putSecret(data, 'passphrase', form.passphrase, form.authType === 'key')
+
+    if (form.useJump && form.jumpHost) {
+      data.jumpHost = form.jumpHost
+      data.jumpPort = parseInt(form.jumpPort, 10) || 22
+      data.jumpUsername = form.jumpUsername
+      data.jumpAuthType = form.jumpAuthType
+      data.jumpKeyPath = form.jumpAuthType === 'key' ? form.jumpKeyPath : ''
+      putSecret(data, 'jumpPassword', form.jumpPassword, form.jumpAuthType === 'password')
+      putSecret(data, 'jumpPassphrase', form.jumpPassphrase, form.jumpAuthType === 'key')
+    } else {
+      data.jumpPassword = ''
+      data.jumpPassphrase = ''
+    }
+    return data
+  }
 
   const handleSave = async () => {
     if (!form.host || !form.username) return

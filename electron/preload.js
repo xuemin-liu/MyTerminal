@@ -128,23 +128,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // different JS world) and stashes the resolved paths.  The renderer calls
   // getDropPaths() right after the drop event to retrieve them.
   getDropPaths: () => {
-    const paths = _lastDropPaths.slice()
+    const token = _lastDropToken
+    const paths = token ? _lastDropPaths.slice() : []
     _lastDropPaths.length = 0
+    _lastDropToken = ''
+    if (paths.length) ipcRenderer.send('fs:authorizeDroppedPaths', { token, paths })
     return paths
   },
   platform: process.platform,
 })
 
 const _lastDropPaths = []
+let _lastDropToken = ''
 
 window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('drop', (e) => {
     _lastDropPaths.length = 0
+    _lastDropToken = ''
     if (!e.dataTransfer?.files?.length) return
+    const paths = []
     for (const file of e.dataTransfer.files) {
-      try { _lastDropPaths.push(webUtils.getPathForFile(file)) }
+      try {
+        const filePath = webUtils.getPathForFile(file)
+        if (filePath) paths.push(filePath)
+      }
       catch { /* skip */ }
     }
+    if (!paths.length) return
+    let token = ''
+    try { token = ipcRenderer.sendSync('fs:createDropAuthorizationToken') }
+    catch { return }
+    if (typeof token !== 'string' || !token) return
+    _lastDropToken = token
+    _lastDropPaths.push(...paths)
   }, true)  // capture phase — runs before React's handler
 })
 

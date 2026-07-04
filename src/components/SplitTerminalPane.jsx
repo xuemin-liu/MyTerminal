@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { X } from 'lucide-react'
 import { registerOsc52ClipboardHandler } from '../utils/terminalClipboardUtils'
+import useSessionStore from '../store/useSessionStore'
 
 const TERMINAL_THEME = {
   background: '#0d1117', foreground: '#c9d1d9', cursor: '#58a6ff',
@@ -19,6 +20,7 @@ const MAX_RECONNECT = 5
 
 export default function SplitTerminalPane({ channelId, config, onClose, termInstanceRef, onFocused }) {
   const termRef = useRef(null)
+  const osc52ClipboardEnabled = useSessionStore((state) => state.settings.osc52ClipboardEnabled === true)
 
   useEffect(() => {
     const term = new Terminal({
@@ -36,7 +38,8 @@ export default function SplitTerminalPane({ channelId, config, onClose, termInst
     term.loadAddon(new WebLinksAddon())
     const osc52ClipboardDisposer = registerOsc52ClipboardHandler(
       term,
-      (text) => window.electronAPI.clipboard.writeText(text)
+      (text) => window.electronAPI.clipboard.writeText(text),
+      { enabled: osc52ClipboardEnabled }
     )
     term.open(termRef.current)
     fitAddon.fit()
@@ -123,7 +126,7 @@ export default function SplitTerminalPane({ channelId, config, onClose, termInst
       window.electronAPI.ssh.disconnect(channelId)
       term.dispose()
     }
-  }, [channelId])
+  }, [channelId, osc52ClipboardEnabled])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>

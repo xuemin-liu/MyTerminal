@@ -43,7 +43,8 @@ class TunnelManager {
   startRemote(tunnelId, channelId, sshClient, config) {
     // config: { remotePort, localHost, localPort }
     return new Promise((resolve, reject) => {
-      sshClient.forwardIn('0.0.0.0', config.remotePort, (err) => {
+      const remoteBindAddress = config.remoteBindAddress || '127.0.0.1'
+      sshClient.forwardIn(remoteBindAddress, config.remotePort, (err) => {
         if (err) { reject(err); return }
 
         const connections = new Set()
@@ -58,7 +59,14 @@ class TunnelManager {
         }
 
         sshClient.on('tcp connection', onTcpConnection)
-        this.tunnels.set(tunnelId, { type: 'remote', config, connections, sshClient, onTcpConnection, channelId })
+        this.tunnels.set(tunnelId, {
+          type: 'remote',
+          config: { ...config, remoteBindAddress },
+          connections,
+          sshClient,
+          onTcpConnection,
+          channelId,
+        })
         resolve({ tunnelId, remotePort: config.remotePort })
       })
     })
@@ -124,7 +132,7 @@ class TunnelManager {
     }
     if (tunnel.type === 'remote' && tunnel.sshClient && tunnel.onTcpConnection) {
       tunnel.sshClient.removeListener('tcp connection', tunnel.onTcpConnection)
-      try { tunnel.sshClient.unforwardIn('0.0.0.0', tunnel.config.remotePort) } catch (_) {}
+      try { tunnel.sshClient.unforwardIn(tunnel.config.remoteBindAddress || '127.0.0.1', tunnel.config.remotePort) } catch (_) {}
     }
     this.tunnels.delete(tunnelId)
   }

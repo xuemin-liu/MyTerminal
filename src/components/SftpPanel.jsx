@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import {
   Folder, File, ChevronUp, ArrowLeft, ArrowRight, RefreshCw, Upload, Download,
   FolderPlus, Trash2, Edit2, Home, Star, X, Copy, ClipboardCopy, FolderOpen,
-  FileEdit, FileDown, Scissors, ArrowUpDown, ArrowUp as SortAsc, ArrowDown as SortDesc,
+  FileEdit, FileDown, ArrowUp as SortAsc, ArrowDown as SortDesc,
 } from 'lucide-react'
 
 
@@ -187,7 +187,10 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
     // recreate each selected file/folder inside it.
     if (selectedItems.length === 1 && selectedItems[0].type !== 'd') {
       const only = selectedItems[0]
-      const result = await window.electronAPI.dialog.saveFile({ defaultPath: only.name })
+      const result = await window.electronAPI.dialog.saveFile({
+        defaultPath: only.name,
+        securityScope: 'sftp-download-file',
+      })
       if (result.canceled) return
       const res = await window.electronAPI.sftp.download(channelId, joinPath(path, only.name), result.filePath)
       if (res?.error) setError(res.error)
@@ -199,6 +202,7 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
         ? `Download "${selectedItems[0].name}" to…`
         : `Download ${selectedItems.length} items to…`,
       properties: ['openDirectory', 'createDirectory'],
+      securityScope: 'sftp-download-dir',
     })
     if (pick.canceled || !pick.filePaths?.[0]) return
     const parent = pick.filePaths[0]
@@ -220,7 +224,10 @@ export default function SftpPanel({ channelId, cwd, width, sessionKey = 'default
   }
 
   const handleUpload = async () => {
-    const result = await window.electronAPI.dialog.openFile({ properties: ['openFile', 'multiSelections'] })
+    const result = await window.electronAPI.dialog.openFile({
+      properties: ['openFile', 'multiSelections'],
+      securityScope: 'sftp-upload',
+    })
     if (result.canceled) return
     for (const localPath of result.filePaths) {
       const name = localPath.replace(/\\/g, '/').split('/').pop()

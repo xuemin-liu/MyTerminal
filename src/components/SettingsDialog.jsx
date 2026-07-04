@@ -104,6 +104,17 @@ export default function SettingsDialog({ onClose }) {
             </label>
           </div>
           <div className="form-group">
+            <label>
+              <input
+                type="checkbox"
+                checked={local.osc52ClipboardEnabled === true}
+                onChange={(e) => handleChange('osc52ClipboardEnabled', e.target.checked)}
+                style={{ width: 'auto', marginRight: 8 }}
+              />
+              Allow OSC 52 clipboard writes
+            </label>
+          </div>
+          <div className="form-group">
             <label>SSH Keepalive Interval (ms)</label>
             <input
               type="number"

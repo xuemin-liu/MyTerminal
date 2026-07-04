@@ -1,4 +1,5 @@
 const os = require('os')
+const { normalizeLocalSpawnOptions } = require('./security-utils')
 
 // node-pty gives proper PTY semantics (arrow keys, Ctrl+C, resize, TUIs).
 // Fall back to child_process.spawn if node-pty is unavailable or fails to load.
@@ -48,13 +49,23 @@ class LocalTerminalManager {
 
   spawn(channelId, options = {}) {
     return new Promise((resolve, reject) => {
+      let safeOptions
+      try {
+        safeOptions = normalizeLocalSpawnOptions(options)
+      } catch (err) {
+        reject(err)
+        return
+      }
       const isWin = process.platform === 'win32'
-      let shell = (options.shell && options.shell.trim()) || (isWin ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'))
+      let shell = isWin ? 'powershell.exe' : (process.env.SHELL || '/bin/bash')
+      let args = isWin ? [] : []
+      if (safeOptions.mode === 'wsl') {
+        shell = 'wsl.exe'
+        args = safeOptions.distro ? ['-d', safeOptions.distro] : []
+      }
       if (isWin) shell = this._resolveShell(shell)
       const env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
-      const cwd = options.cwd || os.homedir()
-
-      const args = options.args || (isWin && !options.args ? [] : [])
+      const cwd = os.homedir()
 
       if (pty) {
         // PTY path — full terminal semantics
@@ -62,8 +73,8 @@ class LocalTerminalManager {
         try {
           ptyProcess = pty.spawn(shell, args, {
             name: 'xterm-256color',
-            cols: options.cols || 80,
-            rows: options.rows || 24,
+            cols: safeOptions.cols,
+            rows: safeOptions.rows,
             cwd,
             env,
           })
@@ -85,7 +96,7 @@ class LocalTerminalManager {
         const { spawn } = require('child_process')
         let proc
         try {
-          proc = spawn(shell, options.args !== undefined ? options.args : (isWin ? ['-NoLogo'] : []), {
+          proc = spawn(shell, safeOptions.mode === 'default' && isWin ? ['-NoLogo'] : args, {
             env, cwd, windowsHide: true,
           })
         } catch (err) {

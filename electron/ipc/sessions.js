@@ -2,23 +2,50 @@ const { ipcMain, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
-module.exports = function registerSessionHandlers(store, { encryptSession, decryptSession, SENSITIVE_FIELDS, getMainWindow }) {
-  ipcMain.handle('sessions:getAll', () => store.get('sessions', []).map(decryptSession))
+function makeSessionRedactor(decryptSession, SENSITIVE_FIELDS) {
+  return (session) => {
+    const clean = decryptSession(session)
+    for (const field of SENSITIVE_FIELDS) {
+      clean[`has${field[0].toUpperCase()}${field.slice(1)}`] = !!clean[field]
+      delete clean[field]
+    }
+    return clean
+  }
+}
+
+function mergeExistingSensitiveFields(session, existingEncrypted, decryptSession, SENSITIVE_FIELDS) {
+  if (!existingEncrypted) return session
+  const existing = decryptSession(existingEncrypted)
+  const merged = { ...session }
+  for (const field of SENSITIVE_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(merged, field) && existing[field]) {
+      merged[field] = existing[field]
+    }
+  }
+  return merged
+}
+
+function registerSessionHandlers(store, { encryptSession, decryptSession, SENSITIVE_FIELDS, getMainWindow }) {
+  const redactSession = makeSessionRedactor(decryptSession, SENSITIVE_FIELDS)
+  const redactSessions = (sessions) => sessions.map(redactSession)
+
+  ipcMain.handle('sessions:getAll', () => redactSessions(store.get('sessions', [])))
 
   ipcMain.handle('sessions:save', (_event, session) => {
     const sessions = store.get('sessions', [])
     const idx = sessions.findIndex((x) => x.id === session.id)
-    const encrypted = encryptSession(session)
+    const merged = mergeExistingSensitiveFields(session, idx >= 0 ? sessions[idx] : null, decryptSession, SENSITIVE_FIELDS)
+    const encrypted = encryptSession(merged)
     if (idx >= 0) sessions[idx] = encrypted
     else sessions.push(encrypted)
     store.set('sessions', sessions)
-    return sessions.map(decryptSession)
+    return redactSessions(sessions)
   })
 
   ipcMain.handle('sessions:delete', (_event, id) => {
     const sessions = store.get('sessions', []).filter((x) => x.id !== id)
     store.set('sessions', sessions)
-    return sessions.map(decryptSession)
+    return redactSessions(sessions)
   })
 
   ipcMain.handle('sessions:export', async (_event, _sessions) => {
@@ -55,7 +82,7 @@ module.exports = function registerSessionHandlers(store, { encryptSession, decry
       }
       const merged = Array.from(map.values())
       store.set('sessions', merged)
-      return merged.map(decryptSession)
+      return redactSessions(merged)
     } catch (e) {
       return { error: e.message }
     }
@@ -138,3 +165,7 @@ module.exports = function registerSessionHandlers(store, { encryptSession, decry
     }
   })
 }
+
+module.exports = registerSessionHandlers
+module.exports.makeSessionRedactor = makeSessionRedactor
+module.exports.mergeExistingSensitiveFields = mergeExistingSensitiveFields

@@ -26,7 +26,7 @@ describe('decodeOsc52Payload', () => {
 })
 
 describe('registerOsc52ClipboardHandler', () => {
-  it('registers an OSC 52 handler that writes decoded text', () => {
+  function makeHandler() {
     let handler = null
     const term = {
       parser: {
@@ -36,13 +36,38 @@ describe('registerOsc52ClipboardHandler', () => {
         }),
       },
     }
+    return { term, get handler() { return handler } }
+  }
+
+  it('consumes OSC 52 without writing when disabled', () => {
+    const fixture = makeHandler()
     const writeText = vi.fn()
 
-    registerOsc52ClipboardHandler(term, writeText)
+    registerOsc52ClipboardHandler(fixture.term, writeText)
 
-    expect(term.parser.registerOscHandler).toHaveBeenCalledWith(52, expect.any(Function))
-    expect(handler('c;Y2xpcGJvYXJk')).toBe(true)
+    expect(fixture.term.parser.registerOscHandler).toHaveBeenCalledWith(52, expect.any(Function))
+    expect(fixture.handler('c;Y2xpcGJvYXJk')).toBe(true)
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it('writes decoded text only when explicitly enabled', () => {
+    const fixture = makeHandler()
+    const writeText = vi.fn()
+
+    registerOsc52ClipboardHandler(fixture.term, writeText, { enabled: true })
+
+    expect(fixture.handler('c;Y2xpcGJvYXJk')).toBe(true)
     expect(writeText).toHaveBeenCalledWith('clipboard')
+  })
+
+  it('blocks oversized clipboard payloads', () => {
+    const fixture = makeHandler()
+    const writeText = vi.fn()
+
+    registerOsc52ClipboardHandler(fixture.term, writeText, { enabled: true, maxBytes: 3 })
+
+    expect(fixture.handler('c;dG9vIGxvbmc=')).toBe(true)
+    expect(writeText).not.toHaveBeenCalled()
   })
 })
 

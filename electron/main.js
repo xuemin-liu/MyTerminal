@@ -10,22 +10,16 @@ const registerSessionHandlers = require('./ipc/sessions')
 const registerLoggingHandlers = require('./ipc/logging')
 const registerTunnelHandlers = require('./ipc/tunnels')
 const registerBackupHandlers = require('./ipc/backup')
+const { createLocalPathAuthorizer, createOneTimeTokenAuthorizer } = require('./security-utils')
 
 const store = new Store({ name: 'sessions' })
+const localPathAuthorizer = createLocalPathAuthorizer()
+const dropPathTokens = createOneTimeTokenAuthorizer()
 
 // ── IPC input validation ──────────────────────────────────────────────────────
 
 function assertString(val, name) {
   if (typeof val !== 'string') throw new TypeError(`${name} must be a string, got ${typeof val}`)
-}
-
-function assertOptString(val, name) {
-  if (val != null && typeof val !== 'string') throw new TypeError(`${name} must be a string or null, got ${typeof val}`)
-}
-
-function assertInt(val, name, { min = -Infinity, max = Infinity } = {}) {
-  if (!Number.isInteger(val)) throw new TypeError(`${name} must be an integer, got ${typeof val}`)
-  if (val < min || val > max) throw new RangeError(`${name} out of range [${min}, ${max}]: ${val}`)
 }
 
 function assertPlainObject(val, name) {
@@ -59,6 +53,36 @@ function decryptSession(session) {
   const dec = { ...session }
   for (const field of SENSITIVE_FIELDS) if (dec[field]) dec[field] = decryptField(dec[field])
   return dec
+}
+
+function resolveSavedSessionConfig(config) {
+  if (!config?.id) return config
+  const saved = store.get('sessions', []).find((session) => session.id === config.id)
+  if (!saved) return config
+  const decrypted = decryptSession(saved)
+  return {
+    ...decrypted,
+    keepaliveInterval: config.keepaliveInterval || decrypted.keepaliveInterval,
+  }
+}
+
+function authorizeDialogPaths(result, options, kind) {
+  if (!result || result.canceled) return
+  const scope = options?.securityScope
+  if (!scope || !String(scope).startsWith('sftp-')) return
+
+  if (kind === 'saveFile' && result.filePath) {
+    localPathAuthorizer.authorize(result.filePath, 'write')
+    return
+  }
+
+  const paths = Array.isArray(result.filePaths) ? result.filePaths : []
+  const properties = Array.isArray(options?.properties) ? options.properties : []
+  const recursive = properties.includes('openDirectory')
+  const access = scope.includes('download') ? 'write' : 'read'
+  for (const filePath of paths) {
+    localPathAuthorizer.authorize(filePath, access, { recursive })
+  }
 }
 
 let mainWindow
@@ -122,9 +146,10 @@ ipcMain.handle('ssh:connect', async (_event, channelId, config) => {
   try {
     assertString(channelId, 'channelId')
     assertPlainObject(config, 'config')
-    assertString(config.host, 'config.host')
-    assertString(config.username, 'config.username')
-    return await sshManager.connect(channelId, config)
+    const resolvedConfig = resolveSavedSessionConfig(config)
+    assertString(resolvedConfig.host, 'config.host')
+    assertString(resolvedConfig.username, 'config.username')
+    return await sshManager.connect(channelId, resolvedConfig)
   } catch (err) { return { error: err.message } }
 })
 ipcMain.on('ssh:write', (_event, channelId, data) => {
@@ -149,7 +174,10 @@ ipcMain.handle('ssh:ping', async (_event, channelId) => {
 // ── Local terminal IPC ─────────────────────────────────────────────────────────
 
 ipcMain.handle('local:spawn', async (_event, channelId, options) => {
-  try { return await localTerminalManager.spawn(channelId, options) }
+  try {
+    assertString(channelId, 'channelId')
+    return await localTerminalManager.spawn(channelId, options)
+  }
   catch (err) { return { error: err.message } }
 })
 ipcMain.on('local:write', (_event, channelId, data) => {
@@ -171,19 +199,43 @@ ipcMain.handle('sftp:list', async (_event, channelId, remotePath) => {
   catch (err) { return { error: err.message } }
 })
 ipcMain.handle('sftp:download', async (_event, channelId, remotePath, localPath) => {
-  try { return await sshManager.sftpDownload(channelId, remotePath, localPath) }
+  try {
+    assertString(channelId, 'channelId')
+    assertString(remotePath, 'remotePath')
+    assertString(localPath, 'localPath')
+    localPathAuthorizer.assertAccess(localPath, 'write')
+    return await sshManager.sftpDownload(channelId, remotePath, localPath)
+  }
   catch (err) { return { error: err.message } }
 })
 ipcMain.handle('sftp:upload', async (_event, channelId, localPath, remotePath) => {
-  try { return await sshManager.sftpUpload(channelId, localPath, remotePath) }
+  try {
+    assertString(channelId, 'channelId')
+    assertString(localPath, 'localPath')
+    assertString(remotePath, 'remotePath')
+    localPathAuthorizer.assertAccess(localPath, 'read')
+    return await sshManager.sftpUpload(channelId, localPath, remotePath)
+  }
   catch (err) { return { error: err.message } }
 })
 ipcMain.handle('sftp:uploadDir', async (_event, channelId, localDir, remoteDir) => {
-  try { return await sshManager.sftpUploadDir(channelId, localDir, remoteDir) }
+  try {
+    assertString(channelId, 'channelId')
+    assertString(localDir, 'localDir')
+    assertString(remoteDir, 'remoteDir')
+    localPathAuthorizer.assertAccess(localDir, 'read')
+    return await sshManager.sftpUploadDir(channelId, localDir, remoteDir)
+  }
   catch (err) { return { error: err.message } }
 })
 ipcMain.handle('sftp:downloadDir', async (_event, channelId, remoteDir, localDir) => {
-  try { return await sshManager.sftpDownloadDir(channelId, remoteDir, localDir) }
+  try {
+    assertString(channelId, 'channelId')
+    assertString(remoteDir, 'remoteDir')
+    assertString(localDir, 'localDir')
+    localPathAuthorizer.assertAccess(localDir, 'write')
+    return await sshManager.sftpDownloadDir(channelId, remoteDir, localDir)
+  }
   catch (err) { return { error: err.message } }
 })
 ipcMain.handle('sftp:rename', async (_event, channelId, oldPath, newPath) => {
@@ -222,10 +274,38 @@ ipcMain.handle('sftp:writeFile', async (_event, channelId, remotePath, content) 
 // ── File dialog ────────────────────────────────────────────────────────────────
 
 ipcMain.handle('dialog:openFile', async (_event, options) => {
-  return await dialog.showOpenDialog(mainWindow, options || {})
+  const safeOptions = options && typeof options === 'object' && !Array.isArray(options)
+    ? { ...options }
+    : {}
+  delete safeOptions.securityScope
+  const result = await dialog.showOpenDialog(mainWindow, safeOptions)
+  authorizeDialogPaths(result, options, 'openFile')
+  return result
 })
 ipcMain.handle('dialog:saveFile', async (_event, options) => {
-  return await dialog.showSaveDialog(mainWindow, options || {})
+  const safeOptions = options && typeof options === 'object' && !Array.isArray(options)
+    ? { ...options }
+    : {}
+  delete safeOptions.securityScope
+  const result = await dialog.showSaveDialog(mainWindow, safeOptions)
+  authorizeDialogPaths(result, options, 'saveFile')
+  return result
+})
+
+ipcMain.on('fs:createDropAuthorizationToken', (event) => {
+  event.returnValue = dropPathTokens.issue()
+})
+
+ipcMain.on('fs:authorizeDroppedPaths', (_event, payload) => {
+  if (!dropPathTokens.consume(payload?.token)) return
+  const paths = payload?.paths
+  if (!Array.isArray(paths)) return
+  for (const filePath of paths) {
+    if (typeof filePath !== 'string' || !filePath) continue
+    let recursive = false
+    try { recursive = fs.statSync(filePath).isDirectory() } catch (_) {}
+    localPathAuthorizer.authorize(filePath, 'read', { recursive })
+  }
 })
 
 // ── Extracted IPC handler groups ──────────────────────────────────────────────
@@ -238,6 +318,7 @@ const DEFAULT_SETTINGS = {
   defaultFontSize: 14,
   defaultScrollback: 10000,
   colorizeByDefault: true,
+  osc52ClipboardEnabled: false,
   keepaliveInterval: 10000,
   loggingEnabled: false,
   logDirectory: '',
@@ -363,7 +444,11 @@ ipcMain.handle('notify:send', (_event, title, body) => {
 // ── File system helpers ───────────────────────────────────────────────────────
 
 ipcMain.handle('fs:isDirectory', (_event, filePath) => {
-  try { return fs.statSync(filePath).isDirectory() }
+  try {
+    assertString(filePath, 'filePath')
+    if (!localPathAuthorizer.canAccess(filePath, 'read')) return false
+    return fs.statSync(filePath).isDirectory()
+  }
   catch { return false }
 })
 

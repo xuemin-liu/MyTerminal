@@ -1,4 +1,17 @@
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/
+export const OSC52_MAX_BYTES = 1024 * 1024
+
+function utf8ByteLength(value) {
+  let bytes = 0
+  for (const char of value) {
+    const codePoint = char.codePointAt(0)
+    if (codePoint <= 0x7f) bytes += 1
+    else if (codePoint <= 0x7ff) bytes += 2
+    else if (codePoint <= 0xffff) bytes += 3
+    else bytes += 4
+  }
+  return bytes
+}
 
 function decodeBase64Utf8(value) {
   const normalized = value.replace(/\s/g, '')
@@ -32,12 +45,18 @@ export function decodeOsc52Payload(data) {
   return decodeBase64Utf8(payload)
 }
 
-export function registerOsc52ClipboardHandler(term, writeText) {
+export function registerOsc52ClipboardHandler(term, writeText, options = {}) {
   if (!term?.parser?.registerOscHandler || typeof writeText !== 'function') return null
+  const enabled = options.enabled === true
+  const maxBytes = Number.isInteger(options.maxBytes) && options.maxBytes > 0
+    ? options.maxBytes
+    : OSC52_MAX_BYTES
 
   return term.parser.registerOscHandler(52, (data) => {
+    if (!enabled) return true
     const text = decodeOsc52Payload(data)
     if (text == null) return false
+    if (utf8ByteLength(text) > maxBytes) return true
 
     Promise.resolve(writeText(text)).catch(() => {})
     return true

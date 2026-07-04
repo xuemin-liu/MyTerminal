@@ -1,5 +1,6 @@
 const { Client } = require('ssh2')
 const fs = require('fs')
+const { resolveContainedChild } = require('./security-utils')
 
 class SshManager {
   constructor() {
@@ -228,7 +229,7 @@ class SshManager {
     const sftp = await this._getSftp(channelId)
     // Create remote directory (ignore "already exists" errors)
     await new Promise((resolve) => {
-      sftp.mkdir(remoteDir, (err) => resolve())
+      sftp.mkdir(remoteDir, () => resolve())
     })
     const entries = fs.readdirSync(localDir, { withFileTypes: true })
     for (const entry of entries) {
@@ -249,7 +250,7 @@ class SshManager {
     for (const entry of entries) {
       if (entry.name === '.' || entry.name === '..') continue
       const remoteChild = remoteDir.endsWith('/') ? remoteDir + entry.name : remoteDir + '/' + entry.name
-      const localChild = require('path').join(localDir, entry.name)
+      const localChild = resolveContainedChild(localDir, entry.name)
       if (entry.type === 'd') {
         await this.sftpDownloadDir(channelId, remoteChild, localChild)
       } else {

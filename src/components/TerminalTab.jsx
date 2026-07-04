@@ -260,7 +260,8 @@ export default function TerminalTab({ tab, isActive }) {
     term.loadAddon(searchAddon)
     const osc52ClipboardDisposer = registerOsc52ClipboardHandler(
       term,
-      (text) => window.electronAPI.clipboard.writeText(text)
+      (text) => window.electronAPI.clipboard.writeText(text),
+      { enabled: settings.osc52ClipboardEnabled === true }
     )
 
     terminalInstanceRef.current = term
@@ -353,8 +354,8 @@ export default function TerminalTab({ tab, isActive }) {
         const localLabel = tab.wslDistro ? `WSL: ${tab.wslDistro}` : 'local terminal'
         term.write(`\r\n\x1b[90mStarting ${localLabel}...\x1b[0m\r\n`)
         const spawnOpts = tab.wslDistro
-          ? { shell: 'wsl.exe', args: ['-d', tab.wslDistro] }
-          : {}
+          ? { mode: 'wsl', distro: tab.wslDistro }
+          : { mode: 'default' }
         window.electronAPI.local.spawn(tab.channelId, spawnOpts).then((result) => {
           if (!isMountedRef.current) return
           if (result?.error) { setError(result.error); term.write('\r\n\x1b[31mError: ' + result.error + '\x1b[0m\r\n'); return }
