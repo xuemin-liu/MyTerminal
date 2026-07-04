@@ -83,6 +83,11 @@ export default function TerminalTab({ tab, isActive }) {
   const cwdRawBufferRef = useRef('')
   const cwdPlainBufferRef = useRef('')
   const oscSequenceActiveRef = useRef(false)
+  const aiInputRef = useRef(null)
+  const editorTextareaRef = useRef(null)
+  const editingFileRef = useRef(null)
+  const splitTermRef = useRef(null)
+  const focusedPaneRef = useRef('main') // 'main' | 'split' — last pane that had keyboard focus
 
   // Sync refs
   useEffect(() => { colorizeRef.current = colorize }, [colorize])
@@ -92,6 +97,7 @@ export default function TerminalTab({ tab, isActive }) {
   useEffect(() => { showFilterRef.current = showFilter }, [showFilter])
   useEffect(() => { isRegexModeRef.current = isRegexMode }, [isRegexMode])
   useEffect(() => { loggingRef.current = logging }, [logging])
+  useEffect(() => { editingFileRef.current = editingFile }, [editingFile])
 
   // Font size → update live terminal
   useEffect(() => {
@@ -172,6 +178,9 @@ export default function TerminalTab({ tab, isActive }) {
   }
   // Menu/dialog clicks steal focus from xterm's hidden textarea, so the next
   // keystroke (e.g. Enter) wouldn't reach the terminal until refocused.
+  // Always targets the primary pane: every caller (AI run, snippets, copy/
+  // paste, Ctrl+C dialog, search/filter close) acts on the primary channel,
+  // so focus must land where the action's output goes — not the split pane.
   const focusTerminal = () => terminalInstanceRef.current?.focus()
   const handleCopy = () => {
     const sel = terminalInstanceRef.current?.getSelection()
@@ -260,6 +269,10 @@ export default function TerminalTab({ tab, isActive }) {
 
     term.open(termRef.current)
     fitAddon.fit()
+
+    // Track pane focus so tab activation can restore it to the right terminal
+    const handleTermFocus = () => { focusedPaneRef.current = 'main' }
+    term.textarea?.addEventListener('focus', handleTermFocus)
 
     // Sticky command overlay: track scroll to show/hide
     const checkStickyVisibility = () => {
@@ -481,6 +494,7 @@ export default function TerminalTab({ tab, isActive }) {
     cleanupRef.current = [
       () => inputDisposer.dispose(),
       () => scrollDisposer.dispose(),
+      () => term.textarea?.removeEventListener('focus', handleTermFocus),
       () => { if (xtermViewport) xtermViewport.removeEventListener('scroll', handleViewportScroll) },
       () => osc52ClipboardDisposer?.dispose(),
       removeData, removeClose, removeError,
@@ -517,6 +531,28 @@ export default function TerminalTab({ tab, isActive }) {
     })
     return () => window.cancelAnimationFrame(rafId)
   }, [isActive, showSftp, showSnippets, showTunnels])
+
+  // Restore keyboard focus when this tab becomes active. Panes are hidden with
+  // visibility:hidden, so focus otherwise stays on the previous tab's hidden
+  // xterm textarea and keystrokes never reach this tab (hollow cursor).
+  // Overlays survive tab switches but their autofocus hooks only run on mount,
+  // so an open overlay gets focus back explicitly; otherwise the last-focused
+  // pane (main or split) does.
+  useEffect(() => {
+    if (!isActive) return
+    // rAF: wait until the pane is visible — hidden elements can't take focus.
+    const rafId = window.requestAnimationFrame(() => {
+      if (editingFileRef.current) { editorTextareaRef.current?.focus(); return }
+      if (showSearchRef.current) { searchInputRef.current?.focus(); return }
+      if (showFilterRef.current) { filterInputRef.current?.focus(); return }
+      if (showAiRef.current) { aiInputRef.current?.focus(); return }
+      // Only tab activation follows the last-focused pane; direct actions on
+      // the primary channel use focusTerminal() and always focus the primary.
+      if (focusedPaneRef.current === 'split' && splitTermRef.current) splitTermRef.current.focus()
+      else terminalInstanceRef.current?.focus()
+    })
+    return () => window.cancelAnimationFrame(rafId)
+  }, [isActive])
 
   const doSearch = (direction = 'next') => {
     if (!searchQuery) return
@@ -664,6 +700,7 @@ export default function TerminalTab({ tab, isActive }) {
       {/* AI bar */}
       {showAi && (
         <AiBar
+          inputRef={aiInputRef}
           onRun={(cmd) => { writeToChannel(cmd); focusTerminal() }}
           onClose={() => { setShowAi(false); focusTerminal() }}
           getSelection={() => terminalInstanceRef.current?.getSelection() || ''}
@@ -859,7 +896,9 @@ export default function TerminalTab({ tab, isActive }) {
                 key={tab.splitChannelId}
                 channelId={tab.splitChannelId}
                 config={tab.splitConfig}
-                onClose={() => removeSplitPane(tab.id)}
+                termInstanceRef={splitTermRef}
+                onFocused={() => { focusedPaneRef.current = 'split' }}
+                onClose={() => { removeSplitPane(tab.id); focusedPaneRef.current = 'main' }}
               />
             </div>
           </>
@@ -899,6 +938,7 @@ export default function TerminalTab({ tab, isActive }) {
       {editingFile && (
         <FileEditor
           editingFile={editingFile}
+          textareaRef={editorTextareaRef}
           onSave={handleSaveFile}
           onClose={handleCloseEditor}
           onChange={(value) => setEditingFile((prev) => prev ? { ...prev, content: value } : null)}

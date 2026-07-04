@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Sparkles, Send, Play, X, Settings, Copy, Terminal, ScrollText } from 'lucide-react'
 
-export default function AiBar({ onRun, onClose, getSelection, getRecentOutput, osHint }) {
+export default function AiBar({ onRun, onClose, getSelection, getRecentOutput, osHint, inputRef: externalInputRef }) {
   const [query, setQuery] = useState('')
   const [result, setResult] = useState(null)   // { type: 'command'|'text', value: string }
   const [loading, setLoading] = useState(false)
@@ -11,7 +11,8 @@ export default function AiBar({ onRun, onClose, getSelection, getRecentOutput, o
   const [keyInput, setKeyInput] = useState('')
   const [context, setContext] = useState('')
   const [contextSource, setContextSource] = useState(null) // 'selection' | 'output'
-  const inputRef = useRef(null)
+  const localInputRef = useRef(null)
+  const inputRef = externalInputRef || localInputRef
   const commandRef = useRef(null)
 
   useEffect(() => {

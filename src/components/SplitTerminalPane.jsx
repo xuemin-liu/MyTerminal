@@ -17,7 +17,7 @@ const TERMINAL_THEME = {
 
 const MAX_RECONNECT = 5
 
-export default function SplitTerminalPane({ channelId, config, onClose }) {
+export default function SplitTerminalPane({ channelId, config, onClose, termInstanceRef, onFocused }) {
   const termRef = useRef(null)
 
   useEffect(() => {
@@ -40,6 +40,11 @@ export default function SplitTerminalPane({ channelId, config, onClose }) {
     )
     term.open(termRef.current)
     fitAddon.fit()
+
+    // Let the parent focus this pane and know when the user last focused it
+    if (termInstanceRef) termInstanceRef.current = term
+    const handleFocus = () => onFocused?.()
+    term.textarea?.addEventListener('focus', handleFocus)
 
     let isMounted = true
     let attempt = 0
@@ -109,6 +114,8 @@ export default function SplitTerminalPane({ channelId, config, onClose }) {
     return () => {
       isMounted = false
       clearInterval(reconnectTimer)
+      term.textarea?.removeEventListener('focus', handleFocus)
+      if (termInstanceRef) termInstanceRef.current = null
       inputDisposer.dispose()
       osc52ClipboardDisposer?.dispose()
       removeData(); removeClose(); removeError()

@@ -1,6 +1,6 @@
 import React from 'react'
 
-export default function FileEditor({ editingFile, onSave, onClose, onChange }) {
+export default function FileEditor({ editingFile, onSave, onClose, onChange, textareaRef }) {
   return (
     <div className="file-editor-overlay">
       <div className="file-editor-header">
@@ -20,6 +20,7 @@ export default function FileEditor({ editingFile, onSave, onClose, onChange }) {
         </div>
       </div>
       <textarea
+        ref={textareaRef}
         className="file-editor-textarea"
         value={editingFile.content}
         onChange={(e) => onChange(e.target.value)}
